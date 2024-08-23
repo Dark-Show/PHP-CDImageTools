@@ -1,2 +1,2 @@
 # PHP-CDImageTools
-PHP code and cli tools for managing CD images
+PHP code and CLI tools for managing CD images
