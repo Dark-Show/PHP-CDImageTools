@@ -32,7 +32,7 @@ class CDEMU {
 	private $lut_ecc_f = array(); // ECC LUT
 	
 	function __construct() {
-    	$this->lut_init(); // Init EDC/ECC LUTs
+		$this->lut_init(); // Init EDC/ECC LUTs
   	}
 	
 	function load_cue ($cue_file) {

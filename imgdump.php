@@ -78,7 +78,7 @@ function cli_dump_progress ($length, $pos) {
 
 function cli_process_argv ($argv) {
 	$remove_version = false;
-	$dir_out = "output/"
+	$dir_out = "output/";
 	for ($i = 1; $i < count ($argv); $i++) {
 		switch ($argv[$i]) {
 			case '-cue':

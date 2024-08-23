@@ -27,7 +27,7 @@ class ISO9660 {
 			return (false);
 		$this->cb_dataread = $callback;
 		return (true);
-    }
+	}
 	
 	// Initilize filesystem for usage
 	function init ($init_sector = 16) { // Start trying to load filesystem
@@ -40,7 +40,7 @@ class ISO9660 {
 		if (($data = call_user_func ($this->cb_dataread, $this->iso_pvd['lo_pt_m'])) === false) // Get Path Table Location
 			return (false);
 		$this->iso_pt = $this->path_table (substr ($data['data'], 0, $this->iso_pvd['pathtable_size'])); // Load Path Table
-	    $this->file_list = $this->process_directory_record ($this->iso_pt['ex_loc']); // Process Root Directory Record
+		$this->file_list = $this->process_directory_record ($this->iso_pt['ex_loc']); // Process Root Directory Record
 		return (true);
 	}
 	
