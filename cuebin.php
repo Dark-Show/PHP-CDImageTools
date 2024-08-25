@@ -100,12 +100,12 @@ cdrom_save_cue ($disk, "$out_dir$basename.cue");
 function display_help ($argv) {
 	echo ("Cuebin Tools v" . VERSION . "\n" .
 		  "  Arguments:\n" .
-		  "    -cue \"FILE.CUE\"        Input CUE file\n" .
-		  "    -basename \"DISC_NAME\"  Output filename\n" .
-		  "    -output \"PATH/\"        Output directory\n" .
-		  "    -concatenate           Concatenate CUE/BIN files\n" .
-		  "    -split                 Split CUE/BIN into file per track\n" .
-		  "    -audio flac|wave|raw   Compress audio tracks to format\n\n" .
+		  "    -cue \"FILE.CUE\"          Input CUE file\n" .
+		  "    -basename \"DISC_NAME\"    Output filename\n" .
+		  "    -output \"PATH/\"          Output directory\n" .
+		  "    -concatenate             Concatenate CUE/BIN files\n" .
+		  "    -split                   Split CUE/BIN into file per track\n" .
+		  "    -audio flac|wave|raw     Compress audio tracks to format\n\n" .
 		  "  Example Usages:\n" .
 		  "    " . $argv[0] . " -cue \"input.cue\" -output \"output/\" -split\n" .
 		  "    " . $argv[0] . " -cue \"input.cue\" -output \"output/\" -concatenate\n" .

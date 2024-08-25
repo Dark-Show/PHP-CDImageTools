@@ -144,11 +144,11 @@ function cli_process_argv ($argv) {
 function cli_display_help ($argv) {
 	echo ("CD-ROM Image Dumper v" . VERSION . "\n");
 	echo ("  Arguments:\n");
-	echo ("    -cue \"FILE.CUE\"        Input CUE file\n");
-	echo ("    -iso \"FILE.ISO\"        Input ISO file\n");
-	echo ("    -bin \"FILE.BIN\"        Input BIN file\n");
-	echo ("    -output \"PATH/\"        Output directory\n");
-	echo ("    -strip_version         Remove file version from filename\n\n");
+	echo ("    -cue \"FILE.CUE\"    Input CUE file\n");
+	echo ("    -iso \"FILE.ISO\"    Input ISO file\n");
+	echo ("    -bin \"FILE.BIN\"    Input BIN file\n");
+	echo ("    -output \"PATH/\"    Output directory\n");
+	echo ("    -strip_version     Remove file version from filename\n\n");
 	echo ("  Example Usages:\n");
 	echo ("    " . $argv[0] . " -cue \"input.cue\" -output \"output/\"\n");
 	echo ("    " . $argv[0] . " -iso \"input.iso\" -output \"output/\" -strip_version\n");
