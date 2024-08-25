@@ -105,7 +105,7 @@ function display_help ($argv) {
 		  "    -output \"PATH/\"        Output directory\n" .
 		  "    -concatenate           Concatenate CUE/BIN files\n" .
 		  "    -split                 Split CUE/BIN into file per track\n" .
-		  "    -audio flac|wave|raw   Compress audio tracks to format\n" .
+		  "    -audio flac|wave|raw   Compress audio tracks to format\n\n" .
 		  "  Example Usages:\n" .
 		  "    " . $argv[0] . " -cue \"input.cue\" -output \"output/\" -split\n" .
 		  "    " . $argv[0] . " -cue \"input.cue\" -output \"output/\" -concatenate\n" .
