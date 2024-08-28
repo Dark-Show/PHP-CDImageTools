@@ -13,7 +13,7 @@
 //   + Extensions:
 //     + XA
 //////////////////////////////////////
-
+namespace CDEMU;
 class ISO9660 {
 	private $cb_dataread = 0; // Data Read callback
 	private $iso_pvd = array(); // Primary Volume Descriptor

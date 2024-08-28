@@ -113,7 +113,7 @@ function dump_audio ($cdemu, $file_out) {
 
 // Dump File System Contents
 function dump_data ($cdemu, $dir_out, $remove_version = false) {
-	$iso9660 = new ISO9660;
+	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_data_read ([$cdemu, 'read']);
 	$iso9660->init(); // Load filesystem
 	//print_r ($iso9660->get_pvd());
