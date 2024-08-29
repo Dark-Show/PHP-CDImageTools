@@ -93,7 +93,8 @@ function dump_image ($cdemu, $dir_out, $remove_version = false) {
 		if ($cdemu->get_track_type() == 1) { // Data
 			if (!is_dir ($dir_out . "Track $t"))
 				mkdir ($dir_out . "Track $t", 0777, true);
-			dump_data ($cdemu, $dir_out . "Track $t/", $remove_version);
+			$dir_sym = $dir_out[0] == '/' ? $dir_out : getcwd() . "/" . $dir_out; // Absolute path
+			dump_data ($cdemu, $dir_out . "Track $t/", $dir_sym . "Track %%T.cdda", $remove_version);
 		} else // Audio
 			dump_audio ($cdemu, $dir_out . "Track $t.cdda");
 	}
@@ -114,7 +115,7 @@ function dump_audio ($cdemu, $file_out) {
 }
 
 // Dump data track to $dir_out
-function dump_data ($cdemu, $dir_out, $remove_version = false) {
+function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = false) {
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
 	if ($iso9660->init()) { // Process ISO9660 filesystem
@@ -125,12 +126,12 @@ function dump_data ($cdemu, $dir_out, $remove_version = false) {
 		foreach ($contents as $c) { // Save contents to disk
 			echo ("    $c\n");
 			if (substr ($c, -1, 1) == '/') { // Directory check
-				if (!is_dir ($dir_out . "contents/$c"))
-					mkdir ($dir_out . "contents/$c", 0777, true);
+				if (!is_dir ($dir_out . "contents" . $c))
+					mkdir ($dir_out . "contents" . $c, 0777, true);
 				continue;
 			}
 			$f = $remove_version ? $iso9660->format_filename ($c) : $c; // Remove version from filename
-			$iso9660->save_file ($c, $dir_out . "contents/$f", false, 'cli_dump_progress');
+			$iso9660->save_file ($c, $dir_out . "contents" . $f, $cdda_symlink, 'cli_dump_progress');
 		}
 		// TODO: Dump any not accessed sectors within the data track
 	}

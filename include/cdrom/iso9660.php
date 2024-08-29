@@ -122,8 +122,11 @@ class ISO9660 {
 		return ($format);
 	}
 	
-	// Dump file data located at $path to disk file location $path_output with optional header
+	// Dump file data located at $path to disk file location $path_output, optionally create symbolic links for cdda files
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
+	//   $cdda_symlink: Absolute path to symlink directory
+	//                  "/home/user/cdemu/output/Track %%t.cdda" would turn into "/home/user/cdemu/output/Track 9.cdda"
+	//                  "/home/user/cdemu/output/Track %%T.cdda" would turn into "/home/user/cdemu/output/Track 09.cdda"
 	public function &save_file ($path, $path_output, $cdda_symlink = false, $cb_progress = false) {
 		$files = $this->file_list;
 		$path = explode ('/', $path);
@@ -143,7 +146,7 @@ class ISO9660 {
 	}
 	
 	// Return file data located at $path with optional header
-	public function &get_file ($path, $cdda_symlink = false) {
+	public function &get_file ($path) {
 		$files = $this->file_list;
 		$path = explode ('/', $path);
 		foreach ($path as $d) {
@@ -154,7 +157,7 @@ class ISO9660 {
 					$files = $file['contents']; // Update files
 					break;
 				} else if (!$file['file_flag']['directory'] and ($file['file_id'] == $d)) // File
-					return ($this->file_read ($file, $cdda_symlink)); // Read file
+					return ($this->file_read ($file, false)); // Read file
 			}
 		}
 		$fail = false;
@@ -178,8 +181,22 @@ class ISO9660 {
 		$h_riff = false;
 		if (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) {
 			$raw = true;
-			$track = $this->o_cdemu->get_track_by_sector ($file['ex_loc'] - $ex_loc_adj);
-			//print_r ("DEBUG Track: $track\n");
+			if ($cdda_symlink !== false) {
+				$track = $this->o_cdemu->get_track_by_sector ($file['ex_loc'] - $ex_loc_adj);
+				$symlink = explode ("/", $cdda_symlink);
+    			$symlink[count ($symlink) - 1] = '';
+				$symlink = implode ('/', $symlink);
+				
+				if (strpos (basename ($cdda_symlink), "%%T") !== false)
+					$symlink .= str_replace ("%%T", str_pad ($track, 2, '0', STR_PAD_LEFT), basename ($cdda_symlink));
+				else if (strpos (basename ($cdda_symlink), "%%t") !== false)
+					$symlink .= str_replace ("%%T", $track, basename ($cdda_symlink));
+				if (!file_exists ($symlink)) // symlink Manual: file must exist
+					touch ($symlink);
+				symlink ($symlink, $path_out);
+				$out = true;
+				return ($out);
+			}
 		} else if (isset ($data['xa']) and ($data['xa']['submode']['audio'] or $data['xa']['submode']['video'] or $data['xa']['submode']['realtime'])) {
 			$raw = true;
 			// RIFF XA header required
