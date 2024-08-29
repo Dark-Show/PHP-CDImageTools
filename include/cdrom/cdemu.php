@@ -38,7 +38,7 @@ class CDEMU {
 	
 	public function load_cue ($cue_file) {
 		$path = explode ("/", $cue_file);
-    	$path[count ($path) - 1] = '';
+		$path[count ($path) - 1] = '';
 		if (($path = implode ('/', $path)) == '')
 			$path = './';
 		if (!is_file ($path . $cue_file))

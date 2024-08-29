@@ -181,12 +181,11 @@ class ISO9660 {
 		$h_riff = false;
 		if (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) {
 			$raw = true;
-			if ($cdda_symlink !== false) {
+			if ($cdda_symlink !== false and $cdda_symlink[0] == "/") { // Absolute Symlink
 				$track = $this->o_cdemu->get_track_by_sector ($file['ex_loc'] - $ex_loc_adj);
 				$symlink = explode ("/", $cdda_symlink);
-    			$symlink[count ($symlink) - 1] = '';
+				$symlink[count ($symlink) - 1] = '';
 				$symlink = implode ('/', $symlink);
-				
 				if (strpos (basename ($cdda_symlink), "%%T") !== false)
 					$symlink .= str_replace ("%%T", str_pad ($track, 2, '0', STR_PAD_LEFT), basename ($cdda_symlink));
 				else if (strpos (basename ($cdda_symlink), "%%t") !== false)
@@ -197,10 +196,10 @@ class ISO9660 {
 				$out = true;
 				return ($out);
 			}
+			// TODO: Relative symlink
 		} else if (isset ($data['xa']) and ($data['xa']['submode']['audio'] or $data['xa']['submode']['video'] or $data['xa']['submode']['realtime'])) {
 			$raw = true;
-			// RIFF XA header required
-			$h_riff = true;
+			$h_riff = true; // RIFF XA header required
 			$h_riff_fmt_id = "CDXA";
 			$h_riff_fmt = $file['extension']['xa']['data'] . "\x00\x00";
 		}
