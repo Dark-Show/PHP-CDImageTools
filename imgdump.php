@@ -6,9 +6,9 @@
 // Author: Greg Michalik
 const VERSION = '0.1';
 
-include('./include/cdrom/cdemu.php');
-include('./include/cdrom/iso9660.php');
-//include('./include/binary.php'); // DEBUG FUNCTIONS
+include ('include/cdrom/cdemu.php');
+include ('include/cdrom/iso9660.php');
+//include ('./include/binary.php'); // DEBUG FUNCTIONS
 
 cli_process_argv ($argv);
 
@@ -98,6 +98,8 @@ function dump_image ($cdemu, $dir_out, $remove_version = false) {
 			dump_audio ($cdemu, $dir_out . "Track $t.cdda");
 	}
 }
+
+// Dump audio track to $file_out
 function dump_audio ($cdemu, $file_out) {
 	$fp = fopen ($file_out, 'w');
 	$s_len = $cdemu->get_track_length (true);
@@ -111,27 +113,30 @@ function dump_audio ($cdemu, $file_out) {
 	return (true);
 }
 
-// Dump File System Contents
+// Dump data track to $dir_out
 function dump_data ($cdemu, $dir_out, $remove_version = false) {
 	$iso9660 = new CDEMU\ISO9660;
-	$iso9660->set_data_read ([$cdemu, 'read']);
-	$iso9660->init(); // Load filesystem
-	//print_r ($iso9660->get_pvd());
-	//die();
-	if (!is_dir ($dir_out . "contents"))
-		mkdir ($dir_out . "contents", 0777, true);
-	$iso9660->save_system_area ($dir_out . "system_area.bin");
-	$contents = $iso9660->list_contents(); // List contents recursively
-	foreach ($contents as $c) { // Save contents to disk
-		echo ("    $c\n");
-		if (substr ($c, -1, 1) == '/') { // Directory check
-			if (!is_dir ($dir_out . "contents/$c"))
-				mkdir ($dir_out . "contents/$c", 0777, true);
-			continue;
+	$iso9660->set_cdemu ($cdemu);
+	if ($iso9660->init()) { // Process ISO9660 filesystem
+		//print_r ($iso9660->get_pvd());
+		//die();
+		if (!is_dir ($dir_out . "contents"))
+			mkdir ($dir_out . "contents", 0777, true);
+		$iso9660->save_system_area ($dir_out . "system_area.bin");
+		$contents = $iso9660->list_contents(); // List contents recursively
+		foreach ($contents as $c) { // Save contents to disk
+			echo ("    $c\n");
+			if (substr ($c, -1, 1) == '/') { // Directory check
+				if (!is_dir ($dir_out . "contents/$c"))
+					mkdir ($dir_out . "contents/$c", 0777, true);
+				continue;
+			}
+			$f = $remove_version ? $iso9660->format_filename ($c) : $c; // Remove version from filename
+			$iso9660->save_file ($c, $dir_out . "contents/$f", false, 'cli_dump_progress');
 		}
-		$f = $remove_version ? $iso9660->format_filename ($c) : $c; // Remove version from filename
-		$iso9660->save_file ($c, $dir_out . "contents/$f", false, 'cli_dump_progress');
+		// TODO: Dump any not accessed sectors within the data track
 	}
+	// TODO: Dump binary data if not ISO9660
 	return (true);
 }
 

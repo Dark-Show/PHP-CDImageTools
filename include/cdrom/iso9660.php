@@ -15,29 +15,29 @@
 //////////////////////////////////////
 namespace CDEMU;
 class ISO9660 {
-	private $cb_dataread = 0; // Data Read callback
+	private $o_cdemu = 0; // CDEMU object
 	private $iso_pvd = array(); // Primary Volume Descriptor
 	private $iso_pt = array(); // Path Table
 	private $iso_dr_loc = array(); // Processed Directory Record Locations
 	private $file_list = array(); // File System Contents
 	
-	// Sets CD-ROM read function callback
-	function set_data_read ($callback) {
-		if (!is_callable ($callback))
+	// Sets CDEMU object
+	function set_cdemu ($cdemu) {
+		if (!is_object ($cdemu))
 			return (false);
-		$this->cb_dataread = $callback;
+		$this->o_cdemu = $cdemu;
 		return (true);
 	}
 	
 	// Initilize filesystem for usage
 	function init ($init_sector = 16) { // Start trying to load filesystem
 		$this->iso_dr_loc = array(); // Clear Processed Directory Record Locations
-		if (($data = call_user_func ($this->cb_dataread, $init_sector)) === false) // Load Sector 16
+		if (($data = $this->o_cdemu->read ( $init_sector)) === false) // Load Sector 16
 			return (false);
 		// TODO: Also load supplimental
 		if (!$this->iso_pvd = $this->volume_descriptor ($data['data'])) // Load Primary Volume Descriptor
 			return (false);
-		if (($data = call_user_func ($this->cb_dataread, $this->iso_pvd['lo_pt_m'])) === false) // Get Path Table Location
+		if (($data = $this->o_cdemu->read ( $this->iso_pvd['lo_pt_m'])) === false) // Get Path Table Location
 			return (false);
 		$this->iso_pt = $this->path_table (substr ($data['data'], 0, $this->iso_pvd['pathtable_size'])); // Load Path Table
 		$this->file_list = $this->process_directory_record ($this->iso_pt['ex_loc']); // Process Root Directory Record
@@ -53,12 +53,13 @@ class ISO9660 {
 		$fail = false;
 		$system_area = '';
 		for ($i = 0; $i < 16; $i++) {
-			if (($data = call_user_func ($this->cb_dataread, $i)) === false)
+			if (($data = $this->o_cdemu->read ( $i)) === false)
 				return ($fail);
 			$system_area .= $data['data'];
 		}
 		return ($system_area);
 	}
+	
 	// Save System Area to $file
 	function save_system_area ($file) {
 		if (($sa = $this->get_system_area()) === false)
@@ -166,7 +167,7 @@ class ISO9660 {
 		// Note: For CDDA referenced files, we use $ex_loc_adj to seek backwards 2sec and add 2sec to the file_length
 		$ex_loc_adj = (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) ? 150 : 0; // Header time starts at 00:02:00
 		
-		if (($data = call_user_func ($this->cb_dataread, $file['ex_loc'] - $ex_loc_adj)) === false) {
+		if (($data = $this->o_cdemu->read ( $file['ex_loc'] - $ex_loc_adj)) === false) {
 			echo ("Error: Unexpected end of image!\n");
 			return ($fail);
 		}
@@ -222,7 +223,7 @@ class ISO9660 {
 			call_user_func ($cb_progress, $file_length, $length);
 		
 		while ($data !== false and $length < $file_length) {
-			if (($data = call_user_func ($this->cb_dataread)) === false) {
+			if (($data = $this->o_cdemu->read()) === false) {
 				print_r ("Error: Unexpected end of image!\n");
 				continue;
 			}
@@ -310,7 +311,7 @@ class ISO9660 {
 	
 	private function process_directory_record ($loc) {
 		$dir = array(); // Directory Listing
-	    $data = call_user_func ($this->cb_dataread, $loc); // Get Directory Record Location
+	    $data = $this->o_cdemu->read ( $loc); // Get Directory Record Location
 		$dr = $this->directory_record ($data['data']); // Load Directory Record
 		$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
 		
