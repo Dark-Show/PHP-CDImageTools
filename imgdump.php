@@ -133,7 +133,7 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 			$symdepth = ($cdda_symlink != false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
 			$iso9660->save_file ($c, $dir_out . "contents" . $f, ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), 'cli_dump_progress');
 		}
-		// TODO: Dump any not accessed sectors within the data track
+		// TODO: Dump any unaccessed sectors within the data track
 	}
 	// TODO: Dump binary data if not ISO9660
 	return (true);

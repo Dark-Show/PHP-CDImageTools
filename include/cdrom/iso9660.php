@@ -67,7 +67,7 @@ class ISO9660 {
 	public function save_system_area ($file) {
 		if (($sa = $this->get_system_area()) === false)
 			return (false);
-		if (file_put_contents($file, $sa) === false)
+		if (file_put_contents ($file, $sa) === false)
 			return (false);
 		return (true);
 	}
@@ -124,7 +124,7 @@ class ISO9660 {
 	
 	// Dump file data located at $path to disk file location $path_output, optionally create symbolic links for cdda files
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
-	//   $cdda_symlink: Absolute path to symlink directory
+	//   $cdda_symlink: Absolute or relative path to symlink directory. Relativity is from the dumped file $path
 	//                  "/home/user/cdemu/output/Track %%t.cdda" would turn into "/home/user/cdemu/output/Track 9.cdda"
 	//                  "/home/user/cdemu/output/Track %%T.cdda" would turn into "/home/user/cdemu/output/Track 09.cdda"
 	public function &save_file ($path, $path_output, $cdda_symlink = false, $cb_progress = false) {
@@ -190,6 +190,8 @@ class ISO9660 {
 					$symlink .= str_replace ("%%T", str_pad ($track, 2, '0', STR_PAD_LEFT), $symfile);
 				else if (strpos ($symfile, "%%t") !== false)
 					$symlink .= str_replace ("%%t", $track, $symfile);
+				if (file_exists ($file_out))
+					unlink ($file_out);
 				symlink ($symlink, $file_out); // Note: Target not existant at this point
 				$out = true;
 				return ($out);
@@ -219,6 +221,8 @@ class ISO9660 {
 			$out = "RIFF" . pack ('V', $file_length + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $file_length) . $out;
 		
 		if ($file_out !== false) {
+			$dt = \DateTime::createFromFormat ($file['recording_date']['string_format'] , $file['recording_date']['string']);
+			touch ($file_out, $dt->getTimestamp());
 			$fh = fopen ($file_out, 'w');
 			fwrite ($fh, $out);
 			$out = '';
@@ -416,9 +420,21 @@ class ISO9660 {
 			$dt['gmt']    = ord (substr ($data, 16, 1));       // Greenwich Mean Time Offset (GMT-12(West) to GMT+13(East))
 		} else
 			return (false);
+		
 		$dt['gmt'] = -12.00 + ($dt['gmt'] * 0.25);
-		if ($dt['gmt'] != floor ($dt['gmt']))
-			$dt['gmt'] = floor ($dt['gmt']) . ":" . (($dt['gmt'] - floor ($dt['gmt'])) * 4 * 15);
+		$dt['gmt'] = ($dt['gmt'] > 0 ? "+" : "-") .
+					 str_pad (abs (floor ($dt['gmt'])), 2, '0', STR_PAD_LEFT) . ":" .
+					 str_pad ((($dt['gmt'] - floor ($dt['gmt'])) * 4 * 15), 2, '0', STR_PAD_LEFT);
+		
+		$dt['string_format'] = "Y-n-j G:i:s" . (isset ($dt['hsec']) ? ":v" : "") . "P";
+		$dt['string'] = $dt['year'] . "-" .
+						$dt['month'] . "-" .
+						$dt['day'] . " " .
+						$dt['hour'] . ":" . 
+						str_pad ($dt['min'], 2, '0', STR_PAD_LEFT) . ":" .
+						str_pad ($dt['sec'], 2, '0', STR_PAD_LEFT) .
+						(isset ($dt['hsec']) ? ":" . str_pad ($dt['hsec'] * 10, 3, '0', STR_PAD_LEFT) : '') . 
+						$dt['gmt'];
 		return ($dt);
 	}
 }
