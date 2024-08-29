@@ -31,6 +31,8 @@ class ISO9660 {
 	
 	// Initilize filesystem for usage
 	function init ($init_sector = 16) { // Start trying to load filesystem
+		if ($this->o_cdemu === 0) // CDEMU check
+			return (false);
 		$this->iso_dr_loc = array(); // Clear Processed Directory Record Locations
 		if (($data = $this->o_cdemu->read ( $init_sector)) === false) // Load Sector 16
 			return (false);
