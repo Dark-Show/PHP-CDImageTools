@@ -171,6 +171,7 @@ class ISO9660 {
 			$cb_progress = false;
 		
 		// Note: For CDDA referenced files, we use $ex_loc_adj to seek backwards 2sec and add 2sec to the file_length
+		//       This is probably tied to cd-rom pregap and postgap for more exact trimming
 		$ex_loc_adj = (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) ? 150 : 0; // Header time starts at 00:02:00
 		
 		if (($data = $this->o_cdemu->read ($file['ex_loc'] - $ex_loc_adj)) === false) {
@@ -183,13 +184,12 @@ class ISO9660 {
 			$raw = true;
 			if ($cdda_symlink !== false and $cdda_symlink[0] == "/") { // Absolute Symlink
 				$track = $this->o_cdemu->get_track_by_sector ($file['ex_loc'] - $ex_loc_adj);
-				$symlink = explode ("/", $cdda_symlink);
-				$symlink[count ($symlink) - 1] = '';
-				$symlink = implode ('/', $symlink);
-				if (strpos (basename ($cdda_symlink), "%%T") !== false)
-					$symlink .= str_replace ("%%T", str_pad ($track, 2, '0', STR_PAD_LEFT), basename ($cdda_symlink));
-				else if (strpos (basename ($cdda_symlink), "%%t") !== false)
-					$symlink .= str_replace ("%%T", $track, basename ($cdda_symlink));
+				$symfile = basename ($cdda_symlink);
+				$symlink = substr ($cdda_symlink, 0, 0 - strlen ($symfile));
+				if (strpos ($symfile, "%%T") !== false)
+					$symlink .= str_replace ("%%T", str_pad ($track, 2, '0', STR_PAD_LEFT), $symfile);
+				else if (strpos ($symfile, "%%t") !== false)
+					$symlink .= str_replace ("%%T", $track, $symfile);
 				if (!file_exists ($symlink)) // symlink Manual: file must exist
 					touch ($symlink);
 				symlink ($symlink, $path_out);
