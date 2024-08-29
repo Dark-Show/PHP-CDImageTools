@@ -549,10 +549,12 @@ class CDEMU {
 		return (true);
 	}
 	
-	// Find track
-	public function find_track_by_sector ($sector) {
+	// Get track number using sector
+	public function get_track_by_sector ($sector) {
 		for ($t = 1; $t <= count ($this->CD['track']); $t++) {
-			if (isset ($this->CD['track'][$t + 1]) and $this->CD['track'][$t + 1]['lba'] <= $sector)
+			if (isset ($this->CD['track'][$t + 1]) and $this->CD['track'][$t + 1]['lba'] > $sector) {
+				break;
+			} else if (!isset ($this->CD['track'][$t + 1]))
 				break;
 		}
 		return ($t);

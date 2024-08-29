@@ -124,7 +124,7 @@ class ISO9660 {
 	
 	// Dump file data located at $path to disk file location $path_output with optional header
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
-	public function &save_file ($path, $path_output, $add_header = true, $cb_progress = false) {
+	public function &save_file ($path, $path_output, $cdda_symlink = false, $cb_progress = false) {
 		$files = $this->file_list;
 		$path = explode ('/', $path);
 		foreach ($path as $d) {
@@ -135,7 +135,7 @@ class ISO9660 {
 					$files = $file['contents']; // Update files
 					break;
 				} else if (!$file['file_flag']['directory'] and ($file['file_id'] == $d)) // File
-					return ($this->file_read ($file, $add_header, $path_output, $cb_progress)); // Read file
+					return ($this->file_read ($file, $cdda_symlink, $path_output, $cb_progress)); // Read file
 			}
 		}
 		$fail = false;
@@ -143,7 +143,7 @@ class ISO9660 {
 	}
 	
 	// Return file data located at $path with optional header
-	public function &get_file ($path, $add_header = true) {
+	public function &get_file ($path, $cdda_symlink = false) {
 		$files = $this->file_list;
 		$path = explode ('/', $path);
 		foreach ($path as $d) {
@@ -154,14 +154,14 @@ class ISO9660 {
 					$files = $file['contents']; // Update files
 					break;
 				} else if (!$file['file_flag']['directory'] and ($file['file_id'] == $d)) // File
-					return ($this->file_read ($file, $add_header)); // Read file
+					return ($this->file_read ($file, $cdda_symlink)); // Read file
 			}
 		}
 		$fail = false;
 		return ($fail); // File not found
 	}
 	
-	private function &file_read ($file, $add_header, $path_out = false, $cb_progress = false) {
+	private function &file_read ($file, $cdda_symlink = false, $path_out = false, $cb_progress = false) {
 		$fail = false;
 		$length = 0;
 		if (!is_callable ($cb_progress))
@@ -178,19 +178,8 @@ class ISO9660 {
 		$h_riff = false;
 		if (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) {
 			$raw = true;
-			if ($add_header) {
-				$h_wave_type = 1; // PCM
-				$h_wave_channels = 2; // Channels
-				$h_wave_sample_rate = 44100; // Hertz
-				$h_wave_bits_per_sample = 16; // Bits
-				$h_wave_bytes_per_sample = ($h_wave_bits_per_sample * $h_wave_channels) / 8; // Bytes
-				$h_wave_bytes_per_second = ($h_wave_sample_rate * $h_wave_bits_per_sample * $h_wave_channels) / 8; // Bytes
-
-				$h_riff = true;
-				$h_riff_fmt_id = "WAVE";
-				$h_riff_fmt = pack ('v', $h_wave_type) . pack ('v', $h_wave_channels) . pack ('V', $h_wave_sample_rate) . 
-							  pack ('V', $h_wave_bytes_per_second) . pack ('v', $h_wave_bytes_per_sample) . pack ('v', $h_wave_bits_per_sample);
-			}
+			$track = $this->o_cdemu->get_track_by_sector ($file['ex_loc'] - $ex_loc_adj);
+			//print_r ("DEBUG Track: $track\n");
 		} else if (isset ($data['xa']) and ($data['xa']['submode']['audio'] or $data['xa']['submode']['video'] or $data['xa']['submode']['realtime'])) {
 			$raw = true;
 			// RIFF XA header required
