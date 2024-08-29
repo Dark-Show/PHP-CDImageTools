@@ -13,6 +13,7 @@
 //   + Extensions:
 //     + XA
 //////////////////////////////////////
+
 namespace CDEMU;
 class ISO9660 {
 	private $o_cdemu = 0; // CDEMU object

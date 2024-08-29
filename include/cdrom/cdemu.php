@@ -11,11 +11,13 @@
 //   + EDC/ECC generation
 //   + LBA/ATIME/TRACK seeking
 //   + Sector type support:
+//     + Mode 0 (2336b: Zeros)
 //     + Mode 1 (2048b)
 //     + Mode 2 (2336b)
 //     + Mode 2 XA Form 1 (2048b)
 //     + Mode 2 XA Form 2 (2324b)
 //////////////////////////////////////
+
 class CDEMU {
 	const bin_sector_size = 2352;
 	const iso_sector_size = 2048;
