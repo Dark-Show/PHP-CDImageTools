@@ -93,8 +93,7 @@ function dump_image ($cdemu, $dir_out, $remove_version = false) {
 		if ($cdemu->get_track_type() == 1) { // Data
 			if (!is_dir ($dir_out . "Track $t"))
 				mkdir ($dir_out . "Track $t", 0777, true);
-			$dir_sym = $dir_out[0] == '/' ? $dir_out : getcwd() . "/" . $dir_out; // Absolute path
-			dump_data ($cdemu, $dir_out . "Track $t/", $dir_sym . "Track %%T.cdda", $remove_version);
+			dump_data ($cdemu, $dir_out . "Track $t/", "../../Track %%T.cdda", $remove_version);
 		} else // Audio
 			dump_audio ($cdemu, $dir_out . "Track $t.cdda");
 	}
@@ -131,7 +130,8 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 				continue;
 			}
 			$f = $remove_version ? $iso9660->format_filename ($c) : $c; // Remove version from filename
-			$iso9660->save_file ($c, $dir_out . "contents" . $f, $cdda_symlink, 'cli_dump_progress');
+			$symdepth = ($cdda_symlink != false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
+			$iso9660->save_file ($c, $dir_out . "contents" . $f, $symdepth . $cdda_symlink, 'cli_dump_progress');
 		}
 		// TODO: Dump any not accessed sectors within the data track
 	}

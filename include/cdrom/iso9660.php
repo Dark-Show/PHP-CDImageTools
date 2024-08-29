@@ -164,7 +164,7 @@ class ISO9660 {
 		return ($fail); // File not found
 	}
 	
-	private function &file_read ($file, $cdda_symlink = false, $path_out = false, $cb_progress = false) {
+	private function &file_read ($file, $cdda_symlink = false, $file_out = false, $cb_progress = false) {
 		$fail = false;
 		$length = 0;
 		if (!is_callable ($cb_progress))
@@ -182,19 +182,18 @@ class ISO9660 {
 		$h_riff = false;
 		if (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) {
 			$raw = true;
-			if ($cdda_symlink !== false and $cdda_symlink[0] == "/") { // Absolute Symlink
+			if ($cdda_symlink !== false) { // Create symlink
 				$track = $this->o_cdemu->get_track_by_sector ($file['ex_loc'] - $ex_loc_adj);
 				$symfile = basename ($cdda_symlink);
 				$symlink = substr ($cdda_symlink, 0, 0 - strlen ($symfile));
 				if (strpos ($symfile, "%%T") !== false)
 					$symlink .= str_replace ("%%T", str_pad ($track, 2, '0', STR_PAD_LEFT), $symfile);
 				else if (strpos ($symfile, "%%t") !== false)
-					$symlink .= str_replace ("%%T", $track, $symfile);
-				symlink ($symlink, $path_out); // Note: Target not existant at this point
+					$symlink .= str_replace ("%%t", $track, $symfile);
+				symlink ($symlink, $file_out); // Note: Target not existant at this point
 				$out = true;
 				return ($out);
 			}
-			// TODO: Relative symlink
 		} else if (isset ($data['xa']) and ($data['xa']['submode']['audio'] or $data['xa']['submode']['video'] or $data['xa']['submode']['realtime'])) {
 			$raw = true;
 			$h_riff = true; // RIFF XA header required
@@ -219,8 +218,8 @@ class ISO9660 {
 		if ($raw and $h_riff)
 			$out = "RIFF" . pack ('V', $file_length + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $file_length) . $out;
 		
-		if ($path_out !== false) {
-			$fh = fopen ($path_out, 'w');
+		if ($file_out !== false) {
+			$fh = fopen ($file_out, 'w');
 			fwrite ($fh, $out);
 			$out = '';
 		}
@@ -244,14 +243,14 @@ class ISO9660 {
 				$length += strlen ($data['data']);
 				$out .= $data['data'];
 			}
-			if ($path_out !== false) {
+			if ($file_out !== false) {
 				fwrite ($fh, $out);
 				$out = '';
 			}
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $file_length, $length);
 		}
-		if ($path_out !== false) {
+		if ($file_out !== false) {
 			fclose ($fh);
 			$out = true;
 		}
