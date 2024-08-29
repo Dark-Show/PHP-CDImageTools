@@ -22,7 +22,7 @@ class ISO9660 {
 	private $file_list = array(); // File System Contents
 	
 	// Sets CDEMU object
-	function set_cdemu ($cdemu) {
+	public function set_cdemu ($cdemu) {
 		if (!is_object ($cdemu))
 			return (false);
 		$this->o_cdemu = $cdemu;
@@ -30,16 +30,16 @@ class ISO9660 {
 	}
 	
 	// Initilize filesystem for usage
-	function init ($init_sector = 16) { // Start trying to load filesystem
+	public function init ($init_sector = 16) { // Start trying to load filesystem
 		if ($this->o_cdemu === 0) // CDEMU check
 			return (false);
 		$this->iso_dr_loc = array(); // Clear Processed Directory Record Locations
-		if (($data = $this->o_cdemu->read ( $init_sector)) === false) // Load Sector 16
+		if (($data = $this->o_cdemu->read ($init_sector)) === false) // Load Sector 16
 			return (false);
 		// TODO: Also load supplimental
 		if (!$this->iso_pvd = $this->volume_descriptor ($data['data'])) // Load Primary Volume Descriptor
 			return (false);
-		if (($data = $this->o_cdemu->read ( $this->iso_pvd['lo_pt_m'])) === false) // Get Path Table Location
+		if (($data = $this->o_cdemu->read ($this->iso_pvd['lo_pt_m'])) === false) // Get Path Table Location
 			return (false);
 		$this->iso_pt = $this->path_table (substr ($data['data'], 0, $this->iso_pvd['pathtable_size'])); // Load Path Table
 		$this->file_list = $this->process_directory_record ($this->iso_pt['ex_loc']); // Process Root Directory Record
@@ -51,11 +51,11 @@ class ISO9660 {
 	}
 	
 	// Load System Area (Sectors 0 - 15)
-	function &get_system_area() {
+	public function &get_system_area() {
 		$fail = false;
 		$system_area = '';
 		for ($i = 0; $i < 16; $i++) {
-			if (($data = $this->o_cdemu->read ( $i)) === false)
+			if (($data = $this->o_cdemu->read ($i)) === false)
 				return ($fail);
 			$system_area .= $data['data'];
 		}
@@ -63,7 +63,7 @@ class ISO9660 {
 	}
 	
 	// Save System Area to $file
-	function save_system_area ($file) {
+	public function save_system_area ($file) {
 		if (($sa = $this->get_system_area()) === false)
 			return (false);
 		if (file_put_contents($file, $sa) === false)
@@ -72,7 +72,7 @@ class ISO9660 {
 	}
 	
 	// Array of files and directories
-	function list_contents ($dir = '/', $recursive = true, $metadata = false) {
+	public function list_contents ($dir = '/', $recursive = true, $metadata = false) {
 		$cd = array (''); // Current directory
 		$fl = array(); // Output File List
 		$files = $this->file_list; // Files
@@ -114,7 +114,7 @@ class ISO9660 {
 	}
 	
 	// Remove version information from filename
-	function &format_filename ($filename) {
+	public function &format_filename ($filename) {
 		if (($pos = strpos ($filename, ';')) === false)
 			return ($filename);
 		$format = substr ($filename, 0, $pos);
@@ -123,7 +123,7 @@ class ISO9660 {
 	
 	// Dump file data located at $path to disk file location $path_output with optional header
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
-	function &save_file ($path, $path_output, $add_header = true, $cb_progress = false) {
+	public function &save_file ($path, $path_output, $add_header = true, $cb_progress = false) {
 		$files = $this->file_list;
 		$path = explode ('/', $path);
 		foreach ($path as $d) {
@@ -142,7 +142,7 @@ class ISO9660 {
 	}
 	
 	// Return file data located at $path with optional header
-	function &get_file ($path, $add_header = true) {
+	public function &get_file ($path, $add_header = true) {
 		$files = $this->file_list;
 		$path = explode ('/', $path);
 		foreach ($path as $d) {
@@ -169,7 +169,7 @@ class ISO9660 {
 		// Note: For CDDA referenced files, we use $ex_loc_adj to seek backwards 2sec and add 2sec to the file_length
 		$ex_loc_adj = (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) ? 150 : 0; // Header time starts at 00:02:00
 		
-		if (($data = $this->o_cdemu->read ( $file['ex_loc'] - $ex_loc_adj)) === false) {
+		if (($data = $this->o_cdemu->read ($file['ex_loc'] - $ex_loc_adj)) === false) {
 			echo ("Error: Unexpected end of image!\n");
 			return ($fail);
 		}
@@ -313,7 +313,7 @@ class ISO9660 {
 	
 	private function process_directory_record ($loc) {
 		$dir = array(); // Directory Listing
-	    $data = $this->o_cdemu->read ( $loc); // Get Directory Record Location
+	    $data = $this->o_cdemu->read ($loc); // Get Directory Record Location
 		$dr = $this->directory_record ($data['data']); // Load Directory Record
 		$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
 		

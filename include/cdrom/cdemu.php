@@ -34,7 +34,7 @@ class CDEMU {
 		$this->lut_init(); // Init EDC/ECC LUTs
   	}
 	
-	function load_cue ($cue_file) {
+	public function load_cue ($cue_file) {
 		$path = explode ("/", $cue_file);
     	$path[count ($path) - 1] = '';
 		if (($path = implode ('/', $path)) == '')
@@ -125,7 +125,7 @@ class CDEMU {
 	}
 	
 	// Load BIN file
-	function load_bin ($file, $audio = false) {
+	public function load_bin ($file, $audio = false) {
 		if (!is_file ($file))
 			return (false);
 		if (!is_array ($this->CD) or !is_array ($this->CD['track'])) {
@@ -148,7 +148,7 @@ class CDEMU {
 	}
 	
 	// Load ISO file
-	function load_iso ($file) {
+	public function load_iso ($file) {
 		if (!is_file ($file))
 			return (false);
 		$this->init(); // Init
@@ -165,7 +165,7 @@ class CDEMU {
 		return (true);
 	}
 	
-	function seek ($pos) {
+	public function seek ($pos) {
 		if (!is_numeric ($pos))
 			$pos = $this->msf2lba ($pos);
 		if (is_numeric ($pos) and $pos <= $this->CD['sector_count']) { // Make sure we are inside our limits
@@ -178,7 +178,7 @@ class CDEMU {
 	}
 	
 	// Public read function
-	function &read ($seek = false) {
+	public function &read ($seek = false) {
 		$fail = false;
 		if ($seek !== false and $seek != $this->sector and !$this->seek ($seek))
 			return ($fail); // Seek failed
@@ -238,7 +238,7 @@ class CDEMU {
 		return ($fail); // EOF
 	}
 	
-	function eject() {
+	public function eject() {
 		if (is_resource ($this->fh))
 			fclose ($this->fh);
 		$this->fh = 0;
@@ -487,7 +487,7 @@ class CDEMU {
 	}
 	
 	// Header to ATime
-	function header2msf ($h) {
+	public function header2msf ($h) {
 		$minutes = str_pad (ord (substr ($h, 0, 1)), 2, "0", STR_PAD_LEFT);
 		$seconds = str_pad (ord ((int)substr ($h, 1, 1) - 2), 2, "0", STR_PAD_LEFT);
 		$frames = str_pad (ord (substr ($h, 2, 1)), 2, "0", STR_PAD_LEFT);
@@ -495,7 +495,7 @@ class CDEMU {
 	}
 	
 	// Header to Logical Block Address
-	function header2lba ($h) {
+	public function header2lba ($h) {
 		$minutes = ord (substr ($h, 0, 1));
 		$seconds = ord ((int)substr ($h, 1, 1) - 2);
 		$frames = ord (substr ($h, 2, 1));
@@ -503,7 +503,7 @@ class CDEMU {
 	}
 
 	// Atime to Logical Block Address
-	function msf2lba ($t) {
+	public function msf2lba ($t) {
 		$time = explode (':', $t);
 		$minutes = (int)$time[0];
 		$seconds = (int)$time[1];
@@ -512,7 +512,7 @@ class CDEMU {
 	}
 	
 	// Atime to Header
-	function msf2header ($t) {
+	public function msf2header ($t) {
 		$time = explode (':', $t);
 		$minutes = (int)$time[0];
 		$seconds = (int)$time[1] + 2;
@@ -521,7 +521,7 @@ class CDEMU {
 	}
 
 	// Logical Block Address to ATime
-	function lba2msf ($s) {
+	public function lba2msf ($s) {
 		$seconds = intval ($s / 75);
 		$frames = str_pad ($s - ($seconds * 75), 2, "0", STR_PAD_LEFT);
 		$minutes = str_pad (intval ($seconds / 60), 2, "0", STR_PAD_LEFT);
@@ -530,7 +530,7 @@ class CDEMU {
 	}
 	
 	// Logical Block Address to Header
-	function lba2header ($s) {
+	public function lba2header ($s) {
 		$seconds = intval ($s / 75);
 		$frames = $s - ($seconds * 75);
 		$minutes = intval ($seconds / 60);
@@ -539,7 +539,7 @@ class CDEMU {
 	}
 
 	// Change Track
-	function set_track ($track) {
+	public function set_track ($track) {
 		if (is_array ($this->CD['track']) and $track <= $this->CD['track_count'] and $this->seek ($this->CD['track'][$track]['lba']))
 			$this->track = $track;
 		else
@@ -548,7 +548,7 @@ class CDEMU {
 	}
 	
 	// Find track
-	function find_track_by_sector ($sector) {
+	public function find_track_by_sector ($sector) {
 		for ($t = 1; $t <= count ($this->CD['track']); $t++) {
 			if (isset ($this->CD['track'][$t + 1]) and $this->CD['track'][$t + 1]['lba'] <= $sector)
 				break;
@@ -557,17 +557,17 @@ class CDEMU {
 	}
 	
 	// Current track
-	function get_track() {
+	public function get_track() {
 		return ($this->track);
 	}
 	
 	// Track count
-	function get_track_count() {
+	public function get_track_count() {
 		return ($this->CD['track_count']);
 	}
 	
 	// Track length
-	function get_track_length ($sector = false) {
+	public function get_track_length ($sector = false) {
 		$time = $this->CD['track'][$this->track]; // Get track TOC
 		if (!$sector)
 			$time = $this->lba2msf ($time['length']); // Convert sectors to time 
@@ -577,7 +577,7 @@ class CDEMU {
 	}
 	
 	// Current time inside track
-	function get_track_time ($sector = false) {
+	public function get_track_time ($sector = false) {
 		$cur =  $this->sector - $this->CD['track'][$this->track]['lba']; // current - start
 		if (!$sector)
 			$cur = $this->lba2msf ($cur); // Convert sectors to time
@@ -586,40 +586,40 @@ class CDEMU {
 	
 	// Track type
 	//   0 = Audio, 1 = Data
-	function get_track_type() {
+	public function get_track_type() {
 		return ($this->CD['track'][$this->track]['format']);
 	}
 	
 	// CD length
-	function get_length() {
+	public function get_length() {
 		$time = $this->lba2msf ($this->CD['sector_count']); // Convert sectors to time 
 		return ($time);
 	}
 	
 	// Current CD time
-	function get_time() {
+	public function get_time() {
 		$time = $this->lba2msf ($this->sector); // Convert sectors to time 
 		return ($time);
 	}
 	
 	// Accessed sector list
-	function get_sector_access_list() {
+	public function get_sector_access_list() {
 		ksort ($this->sect_list, SORT_NUMERIC);
 		return ($this->sect_list);
 	}
 	
 	// Current sector
-	function get_sector() { 
+	public function get_sector() { 
 		return ($this->sector);
 	}
 	
 	// Sector count
-	function get_sector_count() { 
+	public function get_sector_count() { 
 		return ($this->CD['sector_count']);
 	}
 	
 	// CD image layout
-	function get_layout() {
+	public function get_layout() {
 		return ($this->CD);
 	}
 }
