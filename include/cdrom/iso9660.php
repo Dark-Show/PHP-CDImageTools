@@ -190,9 +190,7 @@ class ISO9660 {
 					$symlink .= str_replace ("%%T", str_pad ($track, 2, '0', STR_PAD_LEFT), $symfile);
 				else if (strpos ($symfile, "%%t") !== false)
 					$symlink .= str_replace ("%%T", $track, $symfile);
-				if (!file_exists ($symlink)) // symlink Manual: file must exist
-					touch ($symlink);
-				symlink ($symlink, $path_out);
+				symlink ($symlink, $path_out); // Note: Target not existant at this point
 				$out = true;
 				return ($out);
 			}
