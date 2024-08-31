@@ -426,14 +426,14 @@ class ISO9660 {
 					 str_pad (abs (floor ($dt['gmt'])), 2, '0', STR_PAD_LEFT) . ":" .
 					 str_pad ((($dt['gmt'] - floor ($dt['gmt'])) * 4 * 15), 2, '0', STR_PAD_LEFT);
 		
-		$dt['string_format'] = "Y-n-j G:i:s" . (isset ($dt['hsec']) ? ":v" : "") . "P";
+		$dt['string_format'] = "Y-n-j G:i:s" . (isset ($dt['hsec']) ? ".v" : "") . "P";
 		$dt['string'] = $dt['year'] . "-" .
 						$dt['month'] . "-" .
 						$dt['day'] . " " .
 						$dt['hour'] . ":" . 
 						str_pad ($dt['min'], 2, '0', STR_PAD_LEFT) . ":" .
 						str_pad ($dt['sec'], 2, '0', STR_PAD_LEFT) .
-						(isset ($dt['hsec']) ? ":" . str_pad ($dt['hsec'] * 10, 3, '0', STR_PAD_LEFT) : '') . 
+						(isset ($dt['hsec']) ? "." . str_pad ($dt['hsec'] * 10, 3, '0', STR_PAD_LEFT) : '') . 
 						$dt['gmt'];
 		return ($dt);
 	}
