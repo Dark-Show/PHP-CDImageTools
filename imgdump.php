@@ -8,7 +8,7 @@ const VERSION = '0.1';
 
 include ('include/cdrom/cdemu.php');
 include ('include/cdrom/iso9660.php');
-include ('./include/binary.php'); // DEBUG FUNCTIONS
+//include ('./include/binary.php'); // DEBUG FUNCTIONS
 
 cli_process_argv ($argv);
 
