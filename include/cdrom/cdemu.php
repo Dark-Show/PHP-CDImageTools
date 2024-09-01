@@ -4,13 +4,14 @@
 // Title: CDEmu
 // Description: CD Image Decoder
 //////////////////////////////////////
+// Supported Functionality
 //   + CUE/BIN format
 //     + Multifile support
 //   + ISO format
 //     + Regenerate Mode 1 sector
 //   + EDC/ECC generation
 //   + LBA/ATIME/TRACK seeking
-//   + Sector type support:
+//   + Sector types:
 //     + Mode 0 (2336b: Zeros)
 //     + Mode 1 (2048b)
 //     + Mode 2 (2336b)
@@ -568,21 +569,25 @@ class CDEMU {
 		return ($this->CD['track_count']);
 	}
 	
+	// Track start
+	public function get_track_start ($sector = false) {
+		if ($sector)
+			return ($this->CD['track'][$this->track]['lba']);
+		return ($this->lba2msf ($this->CD['track'][$this->track]['lba']));
+	}
+	
 	// Track length
 	public function get_track_length ($sector = false) {
-		$time = $this->CD['track'][$this->track]; // Get track TOC
-		if (!$sector)
-			$time = $this->lba2msf ($time['length']); // Convert sectors to time 
-		else
-			$time = $time['length'];
-		return ($time);
+		if ($sector)
+			return ($this->CD['track'][$this->track]['length']);
+		return ($this->lba2msf ($this->CD['track'][$this->track]['length']));
 	}
 	
 	// Current time inside track
 	public function get_track_time ($sector = false) {
-		$cur =  $this->sector - $this->CD['track'][$this->track]['lba']; // current - start
+		$cur = $this->sector - $this->CD['track'][$this->track]['lba']; // current - start
 		if (!$sector)
-			$cur = $this->lba2msf ($cur); // Convert sectors to time
+			$cur = $this->lba2msf ($cur);
 		return ($cur);
 	}
 	
@@ -594,14 +599,12 @@ class CDEMU {
 	
 	// CD length
 	public function get_length() {
-		$time = $this->lba2msf ($this->CD['sector_count']); // Convert sectors to time 
-		return ($time);
+		return ($this->lba2msf ($this->CD['sector_count']));
 	}
 	
 	// Current CD time
 	public function get_time() {
-		$time = $this->lba2msf ($this->sector); // Convert sectors to time 
-		return ($time);
+		return ($this->lba2msf ($this->sector));
 	}
 	
 	// Accessed sector list

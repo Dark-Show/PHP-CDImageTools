@@ -5,7 +5,7 @@
 // Description: ISO9660 Filesystem Decoder
 // Author: Greg Michalik
 //////////////////////////////////////
-//   Supported Functionality
+// Supported Functionality
 //   + System area
 //   + Directory listing
 //     + Metadata

@@ -133,7 +133,27 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 			$symdepth = ($cdda_symlink != false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
 			$iso9660->save_file ($c, $dir_out . "contents" . $f, ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), 'cli_dump_progress');
 		}
-		// TODO: Dump any unaccessed sectors within the data track
+		
+		// Dump any unaccessed sectors within the data track
+		$access = $cdemu->get_sector_access_list();
+		$t_start = $cdemu->get_track_start (true);
+		$t_end = $t_start + $cdemu->get_track_length (true);
+		$fd = 0;
+		for ($i = $t_start; $i <= $t_end; $i++) {
+			if (!isset ($access[$i])) {
+				if (!is_resource ($fd)) {
+					$lba = str_pad ($i, strlen ($t_end), '0', STR_PAD_LEFT);
+					echo ("LBA: $lba\n");
+					$fd = fopen ($dir_out . "LBA$lba.bin", "w");
+					$data = $cdemu->read ($i);
+					fputs ($fd, $data['sector']);
+				} else {
+					$data = $cdemu->read();
+					fputs ($fd, $data['sector']);
+				}
+			} else if (is_resource ($fd))
+				fclose ($fd);
+		}
 	}
 	// TODO: Dump binary data if not ISO9660
 	return (true);
