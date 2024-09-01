@@ -321,13 +321,13 @@ class ISO9660 {
 		$dir = array(); // Directory Listing
 		$data = $this->o_cdemu->seek ($loc);
 		do {
-			$more = false;
+			$more = true;
 			$data = $this->o_cdemu->read(); // Get Directory Record Location
 			$dr = $this->directory_record ($data['data']); // Load Directory Record
-			if ($dr['dr_len'] == 0)
+			if ($dr['dr_len'] == 0) {
+				$more = false;
 				continue;
-			if ($dr['data_len'] > 2048)
-				$more = true;
+			}
 			$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
 			while ($dr['dr_len'] > 0) { // While our directory records have length
 				if ($dr['file_flag']['directory']) { // Directory check
