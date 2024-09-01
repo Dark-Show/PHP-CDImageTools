@@ -19,7 +19,6 @@ class ISO9660 {
 	private $o_cdemu = 0; // CDEMU object
 	private $iso_pvd = array(); // Primary Volume Descriptor
 	private $iso_pt = array(); // Path Table
-	private $iso_dr_loc = array(); // Processed Directory Record Locations
 	private $file_list = array(); // File System Contents
 	
 	// Sets CDEMU object
@@ -321,19 +320,18 @@ class ISO9660 {
 		$dir = array(); // Directory Listing
 		$data = $this->o_cdemu->read ($loc); // Get Directory Record Location
 		$dr = $this->directory_record ($data['data']); // Load Directory Record
-		$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
 		while ($dr['dr_len'] > 0) { // While our directory records have length
-			if ($dr['file_flag']['directory']) { // Directory check
-				if (!isset ($this->iso_dr_loc[$dr['ex_loc']])) {
-					$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
+			if ($dr['file_id'] != "\x00" and $dr['file_id'] != "\x01") { // Check for . and .. records
+				if ($dr['file_flag']['directory']) // Directory check
 					$dr['contents'] = $this->process_directory_record ($dr['ex_loc']);
-					$dir[] = $dr;
-				}
-			} else
 				$dir[] = $dr;
+			}
 			$data['data'] = substr ($data['data'], $dr['dr_len']);
 			$dr = $this->directory_record ($data['data']);
 		}
+		//print_r (strlen ($data['data']) . "\n");
+		if (strlen ($data['data']) < 63)
+			$dir = array_merge ($dir, $this->process_directory_record ($loc + 1));
 		return ($dir);
 	}
 	
