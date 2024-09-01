@@ -31,16 +31,18 @@ class ISO9660 {
 	}
 	
 	// Initilize filesystem for usage
-	public function init ($init_sector = 16) { // Start trying to load filesystem
+	public function init ($init_sector = 16) {
 		if ($this->o_cdemu === 0) // CDEMU check
 			return (false);
 		$this->iso_dr_loc = array(); // Clear Processed Directory Record Locations
+		
+		// TODO: Also load supplimental
 		if (($data = $this->o_cdemu->read ($init_sector)) === false) // Load Sector 16
 			return (false);
-		// TODO: Also load supplimental
 		if (!$this->iso_pvd = $this->volume_descriptor ($data['data'])) // Load Primary Volume Descriptor
 			return (false);
-		if (($data = $this->o_cdemu->read ($this->iso_pvd['lo_pt_m'])) === false) // Get Path Table Location
+		
+		if (($data = $this->o_cdemu->read ($this->iso_pvd['loo_pt_m'])) === false) // Get Path Table Location
 			return (false);
 		$this->iso_pt = $this->path_table (substr ($data['data'], 0, $this->iso_pvd['pathtable_size'])); // Load Path Table
 		$this->file_list = $this->process_directory_record ($this->iso_pt['ex_loc']); // Process Root Directory Record
@@ -182,7 +184,7 @@ class ISO9660 {
 		if (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) {
 			$raw = true;
 			if ($cdda_symlink !== false and $this->o_cdemu->get_track_type() == 0) { // Create cdda symlink
-				$track = $this->o_cdemu->get_track(); //$this->o_cdemu->get_track_by_sector ($file['ex_loc'] - $ex_loc_adj);
+				$track = $this->o_cdemu->get_track();
 				$symfile = basename ($cdda_symlink);
 				$symlink = substr ($cdda_symlink, 0, 0 - strlen ($symfile));
 				if (strpos ($symfile, "%%T") !== false)
@@ -317,22 +319,29 @@ class ISO9660 {
 	
 	private function process_directory_record ($loc) {
 		$dir = array(); // Directory Listing
-	    $data = $this->o_cdemu->read ($loc); // Get Directory Record Location
-		$dr = $this->directory_record ($data['data']); // Load Directory Record
-		$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
-		
-		while ($dr['dr_len'] > 0) { // While our directory records have length
-			if ($dr['file_flag']['directory']) { // Directory check
-				if (!isset ($this->iso_dr_loc[$dr['ex_loc']])) {
-					$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
-					$dr['contents'] = $this->process_directory_record ($dr['ex_loc']);
+		$data = $this->o_cdemu->seek ($loc);
+		do {
+			$more = false;
+			$data = $this->o_cdemu->read(); // Get Directory Record Location
+			$dr = $this->directory_record ($data['data']); // Load Directory Record
+			if ($dr['dr_len'] == 0)
+				continue;
+			if ($dr['data_len'] > 2048)
+				$more = true;
+			$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
+			while ($dr['dr_len'] > 0) { // While our directory records have length
+				if ($dr['file_flag']['directory']) { // Directory check
+					if (!isset ($this->iso_dr_loc[$dr['ex_loc']])) {
+						$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
+						$dr['contents'] = $this->process_directory_record ($dr['ex_loc']);
+						$dir[] = $dr;
+					}
+				} else
 					$dir[] = $dr;
-				}
-			} else
-				$dir[] = $dr;
-			$data['data'] = substr ($data['data'], $dr['dr_len']);
-			$dr = $this->directory_record ($data['data']);
-		}
+				$data['data'] = substr ($data['data'], $dr['dr_len']);
+				$dr = $this->directory_record ($data['data']);
+			}
+		} while ($more);
 		return ($dir);
 	}
 	
@@ -420,18 +429,18 @@ class ISO9660 {
 		
 		$dt['gmt'] = -12.00 + ($dt['gmt'] * 0.25);
 		$dt['gmt'] = ($dt['gmt'] > 0 ? "+" : "-") .
-					 str_pad (abs (floor ($dt['gmt'])), 2, '0', STR_PAD_LEFT) . ":" .
-					 str_pad ((($dt['gmt'] - floor ($dt['gmt'])) * 4 * 15), 2, '0', STR_PAD_LEFT);
+		             str_pad (abs (floor ($dt['gmt'])), 2, '0', STR_PAD_LEFT) . ":" .
+		             str_pad ((($dt['gmt'] - floor ($dt['gmt'])) * 4 * 15), 2, '0', STR_PAD_LEFT);
 		
 		$dt['string_format'] = "Y-n-j G:i:s" . (isset ($dt['hsec']) ? ".v" : "") . "P";
 		$dt['string'] = $dt['year'] . "-" .
-						$dt['month'] . "-" .
-						$dt['day'] . " " .
-						$dt['hour'] . ":" . 
-						str_pad ($dt['min'], 2, '0', STR_PAD_LEFT) . ":" .
-						str_pad ($dt['sec'], 2, '0', STR_PAD_LEFT) .
-						(isset ($dt['hsec']) ? "." . str_pad ($dt['hsec'] * 10, 3, '0', STR_PAD_LEFT) : '') . 
-						$dt['gmt'];
+		                $dt['month'] . "-" .
+		                $dt['day'] . " " .
+		                $dt['hour'] . ":" . 
+		                str_pad ($dt['min'], 2, '0', STR_PAD_LEFT) . ":" .
+		                str_pad ($dt['sec'], 2, '0', STR_PAD_LEFT) .
+		                (isset ($dt['hsec']) ? "." . str_pad ($dt['hsec'] * 10, 3, '0', STR_PAD_LEFT) : '') . 
+		                $dt['gmt'];
 		return ($dt);
 	}
 }
