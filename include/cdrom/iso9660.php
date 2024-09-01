@@ -319,29 +319,21 @@ class ISO9660 {
 	
 	private function process_directory_record ($loc) {
 		$dir = array(); // Directory Listing
-		$data = $this->o_cdemu->seek ($loc);
-		do {
-			$more = true;
-			$data = $this->o_cdemu->read(); // Get Directory Record Location
-			$dr = $this->directory_record ($data['data']); // Load Directory Record
-			if ($dr['dr_len'] == 0) {
-				$more = false;
-				continue;
-			}
-			$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
-			while ($dr['dr_len'] > 0) { // While our directory records have length
-				if ($dr['file_flag']['directory']) { // Directory check
-					if (!isset ($this->iso_dr_loc[$dr['ex_loc']])) {
-						$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
-						$dr['contents'] = $this->process_directory_record ($dr['ex_loc']);
-						$dir[] = $dr;
-					}
-				} else
+		$data = $this->o_cdemu->read ($loc); // Get Directory Record Location
+		$dr = $this->directory_record ($data['data']); // Load Directory Record
+		$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
+		while ($dr['dr_len'] > 0) { // While our directory records have length
+			if ($dr['file_flag']['directory']) { // Directory check
+				if (!isset ($this->iso_dr_loc[$dr['ex_loc']])) {
+					$this->iso_dr_loc[$dr['ex_loc']] = 1; // Mark Directory Record as processed
+					$dr['contents'] = $this->process_directory_record ($dr['ex_loc']);
 					$dir[] = $dr;
-				$data['data'] = substr ($data['data'], $dr['dr_len']);
-				$dr = $this->directory_record ($data['data']);
-			}
-		} while ($more);
+				}
+			} else
+				$dir[] = $dr;
+			$data['data'] = substr ($data['data'], $dr['dr_len']);
+			$dr = $this->directory_record ($data['data']);
+		}
 		return ($dir);
 	}
 	
