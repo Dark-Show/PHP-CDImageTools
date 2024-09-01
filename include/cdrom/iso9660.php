@@ -330,7 +330,7 @@ class ISO9660 {
 			$dr = $this->directory_record ($data['data']);
 		}
 		//print_r (strlen ($data['data']) . "\n");
-		if (strlen ($data['data']) < 63)
+		if (strlen ($data['data']) <= 63)
 			$dir = array_merge ($dir, $this->process_directory_record ($loc + 1));
 		return ($dir);
 	}
