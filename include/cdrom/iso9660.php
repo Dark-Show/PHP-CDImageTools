@@ -126,8 +126,8 @@ class ISO9660 {
 	// Dump file data located at $path to disk file location $path_output, optionally create symbolic links for cdda files
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
 	//   $cdda_symlink: Absolute or relative path to symlink directory. Relativity is from the dumped file $path
-	//                  "/home/user/cdemu/output/Track %%t.cdda" would turn into "/home/user/cdemu/output/Track 9.cdda"
-	//                  "/home/user/cdemu/output/Track %%T.cdda" would turn into "/home/user/cdemu/output/Track 09.cdda"
+	//                  "/home/user/cdemu/Track %%t.cdda" would turn into "/home/user/cdemu/Track 9.cdda"
+	//                  "/home/user/cdemu/Track %%T.cdda" would turn into "/home/user/cdemu/Track 09.cdda"
 	public function &save_file ($path, $path_output, $cdda_symlink = false, $cb_progress = false) {
 		$files = $this->file_list;
 		$path = explode ('/', $path);
@@ -329,8 +329,7 @@ class ISO9660 {
 			$data['data'] = substr ($data['data'], $dr['dr_len']);
 			$dr = $this->directory_record ($data['data']);
 		}
-		//print_r (strlen ($data['data']) . "\n");
-		if (strlen ($data['data']) <= 63)
+		if (strlen ($data['data']) <= 63) // Padding length check
 			$dir = array_merge ($dir, $this->process_directory_record ($loc + 1));
 		return ($dir);
 	}

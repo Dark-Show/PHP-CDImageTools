@@ -139,7 +139,7 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 		$t_start = $cdemu->get_track_start (true);
 		$t_end = $t_start + $cdemu->get_track_length (true);
 		$fd = 0;
-		for ($i = $t_start; $i <= $t_end; $i++) {
+		for ($i = $t_start; $i < $t_end; $i++) {
 			if (!isset ($access[$i])) {
 				if (!is_resource ($fd)) {
 					$lba = str_pad ($i, strlen ($t_end), '0', STR_PAD_LEFT);
