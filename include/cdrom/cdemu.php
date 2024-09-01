@@ -129,6 +129,7 @@ class CDEMU {
 	
 	// Load BIN file
 	public function load_bin ($file, $audio = false) {
+		// TODO: Auto detect if audio track
 		if (!is_file ($file))
 			return (false);
 		if (!is_array ($this->CD) or !is_array ($this->CD['track'])) {

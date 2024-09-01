@@ -318,19 +318,22 @@ class ISO9660 {
 	
 	private function process_directory_record ($loc) {
 		$dir = array(); // Directory Listing
-		$data = $this->o_cdemu->read ($loc); // Get Directory Record Location
-		$dr = $this->directory_record ($data['data']); // Load Directory Record
-		while ($dr['dr_len'] > 0) { // While our directory records have length
-			if ($dr['file_id'] != "\x00" and $dr['file_id'] != "\x01") { // Check for . and .. records
-				if ($dr['file_flag']['directory']) // Directory check
-					$dr['contents'] = $this->process_directory_record ($dr['ex_loc']);
-				$dir[] = $dr;
+		$sec = 0;
+		do {
+			$data = $this->o_cdemu->read ($loc); // Get Directory Record Location
+			$dr = $this->directory_record ($data['data']); // Load Directory Record
+			$sec = $sec == 0 ? $dr['data_len'] / 2048 : $sec;
+			while ($dr['dr_len'] > 0) { // While our directory records have length
+				if ($dr['file_id'] != "\x00" and $dr['file_id'] != "\x01") { // Check for . and .. records
+					if ($dr['file_flag']['directory']) // Directory check
+						$dr['contents'] = $this->process_directory_record ($dr['ex_loc']);
+					$dir[] = $dr;
+				}
+				$data['data'] = substr ($data['data'], $dr['dr_len']);
+				$dr = $this->directory_record ($data['data']);
 			}
-			$data['data'] = substr ($data['data'], $dr['dr_len']);
-			$dr = $this->directory_record ($data['data']);
-		}
-		if (strlen ($data['data']) <= 63) // Padding length check
-			$dir = array_merge ($dir, $this->process_directory_record ($loc + 1));
+			$loc++;
+		} while (--$sec);
 		return ($dir);
 	}
 	

@@ -78,8 +78,6 @@ function cli_process_argv ($argv) {
 		}
 	}
 	dump_image ($cdemu, $dir_out, $remove_version);
-	
-	//print_r ($cdemu->get_sector_access_list());
 	$cdemu->eject(); // Eject Disk
 }
 
