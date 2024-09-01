@@ -173,7 +173,6 @@ class ISO9660 {
 		// Note: For CDDA referenced files, we use $ex_loc_adj to seek backwards 2sec and add 2sec to the file_length
 		//       This is probably tied to cd-rom pregap and postgap for more exact trimming
 		$ex_loc_adj = (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) ? 150 : 0; // Header time starts at 00:02:00
-		
 		if (($data = $this->o_cdemu->read ($file['ex_loc'] - $ex_loc_adj)) === false) {
 			echo ("Error: Unexpected end of image!\n");
 			return ($fail);
@@ -182,8 +181,8 @@ class ISO9660 {
 		$h_riff = false;
 		if (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) {
 			$raw = true;
-			if ($cdda_symlink !== false) { // Create symlink
-				$track = $this->o_cdemu->get_track_by_sector ($file['ex_loc'] - $ex_loc_adj);
+			if ($cdda_symlink !== false and $this->o_cdemu->get_track_type() == 0) { // Create cdda symlink
+				$track = $this->o_cdemu->get_track(); //$this->o_cdemu->get_track_by_sector ($file['ex_loc'] - $ex_loc_adj);
 				$symfile = basename ($cdda_symlink);
 				$symlink = substr ($cdda_symlink, 0, 0 - strlen ($symfile));
 				if (strpos ($symfile, "%%T") !== false)
@@ -203,21 +202,19 @@ class ISO9660 {
 			$h_riff_fmt = $file['extension']['xa']['data'] . "\x00\x00";
 		}
 		
-		if ($raw)
+		if ($raw) {
 			$file_length = (($file['data_len'] / 2048) + $ex_loc_adj) * 2352;
-		else
-			$file_length = $file['data_len'];
-		
-		if ($raw)
 			$out = $data['sector'];
-		else
+		} else {
+			$file_length = $file['data_len'];
 			$out = $data['data'];
-		
+		}
+			
 		if (!$raw and $file_length < strlen ($out))
 			$out = substr ($out, 0, $file_length - strlen ($out));
 		$length += strlen ($out);
 		
-		if ($raw and $h_riff)
+		if ($h_riff)
 			$out = "RIFF" . pack ('V', $file_length + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $file_length) . $out;
 		
 		if ($file_out !== false) {
