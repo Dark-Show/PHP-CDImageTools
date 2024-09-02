@@ -17,7 +17,7 @@
 namespace CDEMU;
 class ISO9660 {
 	private $o_cdemu = 0; // CDEMU object
-	private $iso_pvd = array(); // Primary Volume Descriptor
+	private $iso_pvd = false; // Primary Volume Descriptor
 	private $iso_pt = array(); // Path Table
 	private $file_list = array(); // File System Contents
 	
@@ -69,6 +69,8 @@ class ISO9660 {
 	
 	// Array of files and directories
 	public function list_contents ($dir = '/', $recursive = true, $metadata = false) {
+		if ($this->o_cdemu === 0) // CDEMU check
+			return (false);
 		$cd = array (''); // Current directory
 		$fl = array(); // Output File List
 		$files = $this->file_list; // Files
