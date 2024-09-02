@@ -30,20 +30,14 @@ class ISO9660 {
 	}
 	
 	// Initilize filesystem for usage
-	public function init ($init_sector = 16) {
+	public function init () {
 		if ($this->o_cdemu === 0) // CDEMU check
 			return (false);
 		$this->iso_dr_loc = array(); // Clear Processed Directory Record Locations
-		
-		// TODO: Also load supplimental
-		if (($data = $this->o_cdemu->read ($init_sector)) === false) // Load Sector 16
+		if ($this->process_volume_descriptor() === false)
 			return (false);
-		if (!$this->iso_pvd = $this->volume_descriptor ($data['data'])) // Load Primary Volume Descriptor
+		if ($this->process_path_table() === false)
 			return (false);
-		
-		if (($data = $this->o_cdemu->read ($this->iso_pvd['loo_pt_m'])) === false) // Get Path Table Location
-			return (false);
-		$this->iso_pt = $this->path_table (substr ($data['data'], 0, $this->iso_pvd['pathtable_size'])); // Load Path Table
 		$this->file_list = $this->process_directory_record ($this->iso_pt['ex_loc']); // Process Root Directory Record
 		return (true);
 	}
@@ -259,6 +253,15 @@ class ISO9660 {
 		return ($out);
 	}
 	
+	private function process_volume_descriptor() {
+		// TODO: Properly process volume descriptor
+		if (($data = $this->o_cdemu->read (16)) === false) // Load Sector 16
+			return (false);
+		if (!$this->iso_pvd = $this->volume_descriptor ($data['data'])) // Load Primary Volume Descriptor
+			return (false);
+		return (true);
+	}
+	
 	private function volume_descriptor ($data) {
 		$vd = array();
 		$vd['type'] = ord (substr ($data, 0, 1)); // Volume descriptor type
@@ -333,7 +336,7 @@ class ISO9660 {
 				$dr = $this->directory_record ($data['data']);
 			}
 			$loc++;
-		} while (--$sec);
+		} while (--$sec > 0);
 		return ($dir);
 	}
 	
@@ -385,6 +388,14 @@ class ISO9660 {
 			$dr['extension']['xa'] = $xa;
 		}
 		return ($dr);
+	}
+	
+	private function process_path_table() {
+		// TODO: Handle multi-sector path tables
+		if (($data = $this->o_cdemu->read ($this->iso_pvd['lo_pt_m'])) === false) // Get Path Table Location
+			return (false);
+		$this->iso_pt = $this->path_table (substr ($data['data'], 0, $this->iso_pvd['pathtable_size'])); // Load Path Table
+		return (true);
 	}
 	
 	private function path_table ($data) {
