@@ -36,9 +36,9 @@ class ISO9660 {
 		$this->iso_dr_loc = array(); // Clear Processed Directory Record Locations
 		if ($this->process_volume_descriptor() === false)
 			return (false);
-		if ($this->process_path_table() === false)
-			return (false);
-		$this->file_list = $this->process_directory_record ($this->iso_pt['ex_loc']); // Process Root Directory Record
+		//if ($this->process_path_table() === false)
+		//	return (false);
+		$this->file_list = $this->process_directory_record ($this->iso_pvd['root_dir_rec']['ex_loc']); // Process Root Directory Record
 		return (true);
 	}
 	
@@ -259,7 +259,7 @@ class ISO9660 {
 		// TODO: Properly process volume descriptor
 		if (($data = $this->o_cdemu->read (16)) === false) // Load Sector 16
 			return (false);
-		if (!$this->iso_pvd = $this->volume_descriptor ($data['data'])) // Load Primary Volume Descriptor
+		if (($this->iso_pvd = $this->volume_descriptor ($data['data'])) === false) // Load Primary Volume Descriptor
 			return (false);
 		return (true);
 	}
@@ -267,9 +267,7 @@ class ISO9660 {
 	private function volume_descriptor ($data) {
 		$vd = array();
 		$vd['type'] = ord (substr ($data, 0, 1)); // Volume descriptor type
-		
-		$vd['id'] = substr ($data, 1, 5); // Standard Identifier
-		if ($vd['id'] !== "CD001")
+		if (($vd['id'] = substr ($data, 1, 5)) !== "CD001") // Standard Identifier
 			return (false);
 		$vd['version'] = ord (substr ($data, 6, 1)); // Volume descriptor Version
 		
@@ -321,6 +319,24 @@ class ISO9660 {
 		return ($vd);
 	}
 	
+	private function process_path_table() {
+		// TODO: Handle multi-sector path tables
+		if (($data = $this->o_cdemu->read ($this->iso_pvd['lo_pt_m'])) === false) // Get Path Table Location
+			return (false);
+		$this->iso_pt = $this->path_table (substr ($data['data'], 0, $this->iso_pvd['pathtable_size'])); // Load Path Table
+		return (true);
+	}
+	
+	private function path_table ($data) {
+		$pt = array();
+		$pt['di_len'] = ord (substr ($data, 0, 1)); // Directory Identifier Length
+		$pt['ex_len'] = ord (substr ($data, 1, 1)); // Extended Attribute Record Length
+		$pt['ex_loc'] = unpack ('N', substr ($data, 2, 4))[1]; // Location of Extent
+		$pt['pd_num'] = unpack ('n', substr ($data, 6, 2))[1]; // Parent Directory Number
+		$pt['dir_id'] = substr ($data, 8, $pt['di_len']); // Directory Identifier
+		return ($pt);
+	}
+	
 	private function process_directory_record ($loc) {
 		$dir = array(); // Directory Listing
 		$sec = 0;
@@ -359,10 +375,8 @@ class ISO9660 {
 		$flags['protection'] = (ord (substr ($data, 25, 1)) >> 4) & 0x01; // Protection
 		$flags['multiextent'] = (ord (substr ($data, 25, 1)) >> 5) & 0x01; // Multi-Extent
 		$dr['file_flag'] = $flags;
-		
 		$dr['il_fu_size'] = ord (substr ($data, 26, 1)); // Interleave File Unit Size
 		$dr['il_gap_size'] = ord (substr ($data, 27, 1)); // Interleave Gap Size
-		
 		$dr['vol_seq_num'] =  unpack ('n', substr ($data, 29, 2))[1]; // Volume Sequence Number
 		$dr['fi_len'] = ord (substr ($data, 32, 1)); // Length of File Identifier
 		$dr['file_id'] = substr ($data, 33, $dr['fi_len']); // File Identifier
@@ -390,24 +404,6 @@ class ISO9660 {
 			$dr['extension']['xa'] = $xa;
 		}
 		return ($dr);
-	}
-	
-	private function process_path_table() {
-		// TODO: Handle multi-sector path tables
-		if (($data = $this->o_cdemu->read ($this->iso_pvd['lo_pt_m'])) === false) // Get Path Table Location
-			return (false);
-		$this->iso_pt = $this->path_table (substr ($data['data'], 0, $this->iso_pvd['pathtable_size'])); // Load Path Table
-		return (true);
-	}
-	
-	private function path_table ($data) {
-		$pt = array();
-		$pt['di_len'] = ord (substr ($data, 0, 1)); // Directory Identifier Length
-		$pt['ex_len'] = ord (substr ($data, 1, 1)); // Extended Attribute Record Length
-		$pt['ex_loc'] = unpack ('N', substr ($data, 2, 4))[1]; // Location of Extent
-		$pt['pd_num'] = unpack ('n', substr ($data, 6, 2))[1]; // Parent Directory Number
-		$pt['dir_id'] = substr ($data, 8, 8 - (7 + $pt['di_len'])); // Directory Identifier
-		return ($pt);
 	}
 	
 	private function iso_date_time ($data) {
