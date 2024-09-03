@@ -16,10 +16,10 @@
 
 namespace CDEMU;
 class ISO9660 {
-	private $o_cdemu = 0; // CDEMU object
+	private $o_cdemu = false; // CDEMU object
 	private $iso_pvd = false; // Primary Volume Descriptor
 	private $iso_pt = array(); // Path Table
-	private $file_list = array(); // File System Contents
+	private $iso_dr = array(); // Directory Recrods
 	
 	// Sets CDEMU object
 	public function set_cdemu ($cdemu) {
@@ -31,17 +31,17 @@ class ISO9660 {
 	
 	// Initilize filesystem for usage
 	public function init () {
-		if ($this->o_cdemu === 0) // CDEMU check
+		if ($this->o_cdemu === false) // CDEMU check
 			return (false);
-		$this->iso_dr_loc = array(); // Clear Processed Directory Record Locations
 		if ($this->process_volume_descriptor() === false)
 			return (false);
 		//if ($this->process_path_table() === false)
 		//	return (false);
-		$this->file_list = $this->process_directory_record ($this->iso_pvd['root_dir_rec']['ex_loc']); // Process Root Directory Record
+		$this->iso_dr = $this->process_directory_record ($this->iso_pvd['root_dir_rec']['ex_loc']);
 		return (true);
 	}
 	
+	// Returns Primary Volume Descriptor
 	public function get_pvd() {
 		return ($this->iso_pvd);
 	}
@@ -69,11 +69,9 @@ class ISO9660 {
 	
 	// Array of files and directories
 	public function list_contents ($dir = '/', $recursive = true, $metadata = false) {
-		if ($this->o_cdemu === 0) // CDEMU check
-			return (false);
 		$cd = array (''); // Current directory
 		$fl = array(); // Output File List
-		$files = $this->file_list; // Files
+		$files = $this->iso_dr; // Files
 		$dir = explode ('/', $dir);
 		foreach ($dir as $d) { // Loop through $dir, fill in $cd and get records
 			if ($d != null) {
@@ -125,7 +123,7 @@ class ISO9660 {
 	//                  "/home/user/cdemu/Track %%t.cdda" would turn into "/home/user/cdemu/Track 9.cdda"
 	//                  "/home/user/cdemu/Track %%T.cdda" would turn into "/home/user/cdemu/Track 09.cdda"
 	public function &save_file ($path, $path_output, $cdda_symlink = false, $cb_progress = false) {
-		$files = $this->file_list;
+		$files = $this->iso_dr;
 		$path = explode ('/', $path);
 		foreach ($path as $d) {
 			if ($d == null)
@@ -144,7 +142,7 @@ class ISO9660 {
 	
 	// Return file data located at $path with optional header
 	public function &get_file ($path) {
-		$files = $this->file_list;
+		$files = $this->iso_dr;
 		$path = explode ('/', $path);
 		foreach ($path as $d) {
 			if ($d == null)
@@ -188,7 +186,7 @@ class ISO9660 {
 					$symlink .= str_replace ("%%t", $track, $symfile);
 				if (file_exists ($file_out))
 					unlink ($file_out);
-				symlink ($symlink, $file_out); // Note: Target not existant at this point
+				symlink ($symlink, $file_out); // Note: Target non-existent at this point
 				$out = true;
 				return ($out);
 			}
@@ -272,7 +270,7 @@ class ISO9660 {
 		$vd['version'] = ord (substr ($data, 6, 1)); // Volume descriptor Version
 		
 		switch ($vd['type']) {
-			case 0: // Boot Record
+			case 0: // TODO: Boot Record
 				break;
 			case 1: // Primary Volume Descriptor
 				$vd['unused0']               = substr ($data, 7, 1);
@@ -285,8 +283,8 @@ class ISO9660 {
 				$vd['vol_seq_num']           = unpack ('n', substr ($data, 126, 2))[1];
 				$vd['logical_block']         = unpack ('n', substr ($data, 130, 2))[1];
 				$vd['pathtable_size']        = unpack ('N', substr ($data, 136, 4))[1];
-				$vd['lo_pt_l']               = substr ($data, 140, 4);
-				$vd['loo_pt_l']              = substr ($data, 144, 4);
+				$vd['lo_pt_l']               = unpack ('V', substr ($data, 140, 4))[1];
+				$vd['loo_pt_l']              = unpack ('V', substr ($data, 144, 4))[1];
 				$vd['lo_pt_m']               = unpack ('N', substr ($data, 148, 4))[1];
 				$vd['loo_pt_m']              = unpack ('N', substr ($data, 152, 4))[1];
 				$vd['root_dir_rec']          = $this->directory_record (substr ($data, 156, 34));
@@ -306,15 +304,15 @@ class ISO9660 {
 				$vd['application_use']       = substr ($data, 883, 512);
 				$vd['reserved1']             = substr ($data, 1395, 652);
 				break;
+			case 2: // TODO: Supplementary Volume Descriptor
+				break;
+			case 3: // TODO: Volume Partition Descriptor
+				break;
 			case 255: // Volume Descriptor Set Terminator
 				$vd['reserved0']             = substr ($data, 7, 2041); // Reserved (Zero)
 				break;
-			case 2: // Supplementary Volume Descriptor
-				break;
-			case 3: // Volume Partition Descriptor
-				break;
-			default:
-				die ('ISO9660 Error: Unknown volume descriptor type!');
+			default: // Error
+				return (false);
 		}
 		return ($vd);
 	}
@@ -323,11 +321,11 @@ class ISO9660 {
 		// TODO: Handle multi-sector path tables
 		if (($data = $this->o_cdemu->read ($this->iso_pvd['lo_pt_m'])) === false) // Get Path Table Location
 			return (false);
-		$this->iso_pt = $this->path_table (substr ($data['data'], 0, $this->iso_pvd['pathtable_size'])); // Load Path Table
+		$this->iso_pt = $this->path_table_be (substr ($data['data'], 0, $this->iso_pvd['pathtable_size'])); // Load Path Table
 		return (true);
 	}
 	
-	private function path_table ($data) {
+	private function path_table_be ($data) {
 		$pt = array();
 		$pt['di_len'] = ord (substr ($data, 0, 1)); // Directory Identifier Length
 		$pt['ex_len'] = ord (substr ($data, 1, 1)); // Extended Attribute Record Length
@@ -341,12 +339,12 @@ class ISO9660 {
 		$dir = array(); // Directory Listing
 		$sec = 0;
 		do {
-			$data = $this->o_cdemu->read ($loc); // Get Directory Record Location
-			$dr = $this->directory_record ($data['data']); // Load Directory Record
-			$sec = $sec == 0 ? $dr['data_len'] / 2048 : $sec;
-			while ($dr['dr_len'] > 0) { // While our directory records have length
+			$data = $this->o_cdemu->read ($loc);
+			$dr = $this->directory_record ($data['data']);
+				$sec = ($sec == 0 and isset ($dr['data_len'])) ? $dr['data_len'] / 2048 : $sec;
+			while ($dr['dr_len'] > 0) {
 				if ($dr['file_id'] != "\x00" and $dr['file_id'] != "\x01") { // Check for . and .. records
-					if ($dr['file_flag']['directory']) // Directory check
+					if ($dr['file_flag']['directory'])
 						$dr['contents'] = $this->process_directory_record ($dr['ex_loc']);
 					$dir[] = $dr;
 				}
