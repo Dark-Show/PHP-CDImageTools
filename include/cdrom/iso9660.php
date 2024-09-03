@@ -258,13 +258,13 @@ class ISO9660 {
 		do {
 			if (($data = $this->o_cdemu->read ($loc)) === false) // Load Sector 16
 				return (false);
+			$loc++;
 			if (($vd = $this->volume_descriptor ($data['data'])) === false or $vd['type'] == 255)
-				break;
+				$loc = false;
 			if ($this->iso_vd === false)
 				$this->iso_vd = array ();
 			$this->iso_vd[$vd['type']] = $vd;
-			$loc++;
-		} while (1);
+		} while ($loc !== false);
 		if (!isset ($this->iso_vd[1])) {
 			$this->iso_vd = false;
 			return (false);
