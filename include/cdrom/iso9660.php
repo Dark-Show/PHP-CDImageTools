@@ -335,19 +335,24 @@ class ISO9660 {
 	}
 	
 	private function process_path_table() {
-		// TODO: Handle multi-sector path tables
+		// TODO: Properly handle path tables
 		if (($data = $this->o_cdemu->read ($this->iso_vd[1]['lo_pt_m'])) === false) // Get Path Table Location
 			return (false);
-		$this->iso_pt = $this->path_table_be (substr ($data['data'], 0, $this->iso_vd[1]['pathtable_size_be'])); // Load Path Table
+		$this->iso_pt = $this->path_table (substr ($data['data'], 0, $this->iso_vd[1]['pathtable_size_be']), 1); // Load Path Table
 		return (true);
 	}
 	
-	private function path_table_be ($data) {
+	private function path_table ($data, $type = 0) {
 		$pt = array();
 		$pt['di_len'] = ord (substr ($data, 0, 1)); // Directory Identifier Length
 		$pt['ex_len'] = ord (substr ($data, 1, 1)); // Extended Attribute Record Length
-		$pt['ex_loc'] = unpack ('N', substr ($data, 2, 4))[1]; // Location of Extent
-		$pt['pd_num'] = unpack ('n', substr ($data, 6, 2))[1]; // Parent Directory Number
+		if (!$type) {
+			$pt['ex_loc'] = unpack ('V', substr ($data, 2, 4))[1]; // Location of Extent
+			$pt['pd_num'] = unpack ('v', substr ($data, 6, 2))[1]; // Parent Directory Number
+		} else {
+			$pt['ex_loc'] = unpack ('N', substr ($data, 2, 4))[1]; // Location of Extent
+			$pt['pd_num'] = unpack ('n', substr ($data, 6, 2))[1]; // Parent Directory Number
+		}
 		$pt['dir_id'] = substr ($data, 8, $pt['di_len']); // Directory Identifier
 		if ($dr['di_len'] % 2 != 0)
 			$pt['di_pad'] = substr ($data, 8 + $pt['di_len'], 1); // Padding (if di_len is not even)
