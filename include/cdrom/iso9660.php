@@ -256,9 +256,8 @@ class ISO9660 {
 	private function process_volume_descriptor() {
 		$loc = 16;
 		do {
-			if (($data = $this->o_cdemu->read ($loc)) === false) // Load Sector 16
+			if (($data = $this->o_cdemu->read ($loc++)) === false) // Load Sector 16
 				return (false);
-			$loc++;
 			if (($vd = $this->volume_descriptor ($data['data'])) === false or $vd['type'] == 255)
 				$loc = false;
 			if ($this->iso_vd === false)
@@ -287,12 +286,17 @@ class ISO9660 {
 				$vd['sys_id']                = substr ($data, 8, 32);
 				$vd['vol_id']                = substr ($data, 40, 32);
 				$vd['unused1']               = substr ($data, 72, 8);
-				$vd['vol_space_size']        = unpack ('N', substr ($data, 84, 4))[1];
+				$vd['vol_space_size_le']     = unpack ('V', substr ($data, 80, 4))[1];
+				$vd['vol_space_size_be']     = unpack ('N', substr ($data, 84, 4))[1];
 				$vd['unused2']               = substr ($data, 88, 32);
-				$vd['vol_set_size']          = unpack ('n', substr ($data, 122, 2))[1];
-				$vd['vol_seq_num']           = unpack ('n', substr ($data, 126, 2))[1];
-				$vd['logical_block']         = unpack ('n', substr ($data, 130, 2))[1];
-				$vd['pathtable_size']        = unpack ('N', substr ($data, 136, 4))[1];
+				$vd['vol_set_size_le']       = unpack ('v', substr ($data, 120, 2))[1];
+				$vd['vol_set_size_be']       = unpack ('n', substr ($data, 122, 2))[1];
+				$vd['vol_seq_num_le']        = unpack ('v', substr ($data, 124, 2))[1];
+				$vd['vol_seq_num_be']        = unpack ('n', substr ($data, 126, 2))[1];
+				$vd['logical_block_le']      = unpack ('v', substr ($data, 128, 2))[1];
+				$vd['logical_block_be']      = unpack ('n', substr ($data, 130, 2))[1];
+				$vd['pathtable_size_le']     = unpack ('V', substr ($data, 132, 4))[1];
+				$vd['pathtable_size_be']     = unpack ('N', substr ($data, 136, 4))[1];
 				$vd['lo_pt_l']               = unpack ('V', substr ($data, 140, 4))[1];
 				$vd['loo_pt_l']              = unpack ('V', substr ($data, 144, 4))[1];
 				$vd['lo_pt_m']               = unpack ('N', substr ($data, 148, 4))[1];
@@ -331,7 +335,7 @@ class ISO9660 {
 		// TODO: Handle multi-sector path tables
 		if (($data = $this->o_cdemu->read ($this->iso_vd[1]['lo_pt_m'])) === false) // Get Path Table Location
 			return (false);
-		$this->iso_pt = $this->path_table_be (substr ($data['data'], 0, $this->iso_vd[1]['pathtable_size'])); // Load Path Table
+		$this->iso_pt = $this->path_table_be (substr ($data['data'], 0, $this->iso_vd[1]['pathtable_size_be'])); // Load Path Table
 		return (true);
 	}
 	
@@ -425,7 +429,7 @@ class ISO9660 {
 			$dt['sec']    = ord (substr ($data, 5, 1));        // Second (0 - 59)
 			$dt['gmt']    = ord (substr ($data, 6, 1));        // Greenwich Mean Time Offset (GMT-12(West) to GMT+13(East))
 		} else if (strlen ($data) == 17) {
-			$dt['year']   = (int)substr ($data, 0, 4) + 1900;  // Years Since 1900
+			$dt['year']   = (int)substr ($data, 0, 4);         // Years Since 1900
 			$dt['month']  = (int)substr ($data, 4, 2);         // Month (1 - 12)
 			$dt['day']    = (int)substr ($data, 6, 2);         // Day (1 - 31)
 			$dt['hour']   = (int)substr ($data, 8, 2);         // Hour (0 - 23)
