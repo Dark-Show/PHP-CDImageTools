@@ -37,7 +37,7 @@ class ISO9660 {
 			return (false);
 		//if ($this->process_path_table() === false)
 		//	return (false);
-		$this->iso_dr = $this->process_directory_record ($this->iso_vd[1]['root_dir_rec']['ex_loc']);
+		$this->iso_dr = $this->process_directory_record ($this->iso_vd[1]['root_dir_rec']['ex_loc_be']);
 		return (true);
 	}
 	
@@ -168,7 +168,7 @@ class ISO9660 {
 		// Note: For CDDA referenced files, we use $ex_loc_adj to seek backwards 2sec and add 2sec to the file_length
 		//       This is probably tied to cd-rom pregap and postgap for more exact trimming
 		$ex_loc_adj = (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) ? 150 : 0; // Header time starts at 00:02:00
-		if (($data = $this->o_cdemu->read ($file['ex_loc'] - $ex_loc_adj)) === false) {
+		if (($data = $this->o_cdemu->read ($file['ex_loc_be'] - $ex_loc_adj)) === false) {
 			echo ("Error: Unexpected end of image!\n");
 			return ($fail);
 		}
@@ -198,10 +198,10 @@ class ISO9660 {
 		}
 		
 		if ($raw) {
-			$file_length = (($file['data_len'] / 2048) + $ex_loc_adj) * 2352;
+			$file_length = (($file['data_len_be'] / 2048) + $ex_loc_adj) * 2352;
 			$out = $data['sector'];
 		} else {
-			$file_length = $file['data_len'];
+			$file_length = $file['data_len_be'];
 			$out = $data['data'];
 		}
 			
@@ -349,6 +349,8 @@ class ISO9660 {
 		$pt['ex_loc'] = unpack ('N', substr ($data, 2, 4))[1]; // Location of Extent
 		$pt['pd_num'] = unpack ('n', substr ($data, 6, 2))[1]; // Parent Directory Number
 		$pt['dir_id'] = substr ($data, 8, $pt['di_len']); // Directory Identifier
+		if ($dr['di_len'] % 2 != 0)
+			$pt['di_pad'] = substr ($data, 8 + $pt['di_len'], 1); // Padding (if di_len is not even)
 		return ($pt);
 	}
 	
@@ -358,11 +360,11 @@ class ISO9660 {
 		do {
 			$data = $this->o_cdemu->read ($loc);
 			$dr = $this->directory_record ($data['data']);
-				$sec = ($sec == 0 and isset ($dr['data_len'])) ? $dr['data_len'] / 2048 : $sec;
+				$sec = ($sec == 0 and isset ($dr['data_len_be'])) ? $dr['data_len_be'] / 2048 : $sec;
 			while ($dr['dr_len'] > 0) {
 				if ($dr['file_id'] != "\x00" and $dr['file_id'] != "\x01") { // Check for . and .. records
 					if ($dr['file_flag']['directory'])
-						$dr['contents'] = $this->process_directory_record ($dr['ex_loc']);
+						$dr['contents'] = $this->process_directory_record ($dr['ex_loc_be']);
 					$dir[] = $dr;
 				}
 				$data['data'] = substr ($data['data'], $dr['dr_len']);
@@ -379,8 +381,10 @@ class ISO9660 {
 		if ($dr['dr_len'] == 0)
 			return ($dr);
 		$dr['ex_len'] = ord (substr ($data, 1, 1)); // Extended Attribute Record Length
-		$dr['ex_loc'] = unpack ('N', substr ($data, 6, 4))[1]; // Location of Extent
-		$dr['data_len'] = unpack ('N', substr ($data, 14, 4))[1]; // Data Length
+		$dr['ex_loc_le'] = unpack ('V', substr ($data, 2, 4))[1]; // Location of Extent
+		$dr['ex_loc_be'] = unpack ('N', substr ($data, 6, 4))[1]; // Location of Extent
+		$dr['data_len_le'] = unpack ('V', substr ($data, 10, 4))[1]; // Data Length
+		$dr['data_len_be'] = unpack ('N', substr ($data, 14, 4))[1]; // Data Length
 		$dr['recording_date'] = $this->iso_date_time (substr ($data, 18, 7)); // Recording Date/Time
 		$flags = array();
 		$flags['existance'] = (ord (substr ($data, 25, 1)) >> 0) & 0x01; // Existance
@@ -392,7 +396,8 @@ class ISO9660 {
 		$dr['file_flag'] = $flags;
 		$dr['il_fu_size'] = ord (substr ($data, 26, 1)); // Interleave File Unit Size
 		$dr['il_gap_size'] = ord (substr ($data, 27, 1)); // Interleave Gap Size
-		$dr['vol_seq_num'] =  unpack ('n', substr ($data, 29, 2))[1]; // Volume Sequence Number
+		$dr['vol_seq_num_le'] =  unpack ('v', substr ($data, 28, 2))[1]; // Volume Sequence Number
+		$dr['vol_seq_num_be'] =  unpack ('n', substr ($data, 30, 2))[1]; // Volume Sequence Number
 		$dr['fi_len'] = ord (substr ($data, 32, 1)); // Length of File Identifier
 		$dr['file_id'] = substr ($data, 33, $dr['fi_len']); // File Identifier
 		$dr['system_use'] = substr ($data, (34 + $dr['fi_len'] - ($dr['fi_len'] % 2 != 0 ? 1 : 0)), ($dr['dr_len'] - (34 - $dr['fi_len']))); // System Use
