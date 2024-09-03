@@ -342,14 +342,14 @@ class ISO9660 {
 		return (true);
 	}
 	
-	private function path_table ($data, $type = 0) {
+	private function path_table ($data, $endian = 0) {
 		$pt = array();
 		$pt['di_len'] = ord (substr ($data, 0, 1)); // Directory Identifier Length
 		$pt['ex_len'] = ord (substr ($data, 1, 1)); // Extended Attribute Record Length
-		if (!$type) {
+		if (!$endian) { // Little
 			$pt['ex_loc'] = unpack ('V', substr ($data, 2, 4))[1]; // Location of Extent
 			$pt['pd_num'] = unpack ('v', substr ($data, 6, 2))[1]; // Parent Directory Number
-		} else {
+		} else { // Big
 			$pt['ex_loc'] = unpack ('N', substr ($data, 2, 4))[1]; // Location of Extent
 			$pt['pd_num'] = unpack ('n', substr ($data, 6, 2))[1]; // Parent Directory Number
 		}
@@ -360,7 +360,7 @@ class ISO9660 {
 	}
 	
 	private function process_directory_record ($loc) {
-		$dir = array(); // Directory Listing
+		$dir = array();
 		$sec = 0;
 		do {
 			$data = $this->o_cdemu->read ($loc);
@@ -397,7 +397,9 @@ class ISO9660 {
 		$flags['assoc_file'] = (ord (substr ($data, 25, 1)) >> 2) & 0x01; // Associated File
 		$flags['record'] = (ord (substr ($data, 25, 1)) >> 3) & 0x01; // Record
 		$flags['protection'] = (ord (substr ($data, 25, 1)) >> 4) & 0x01; // Protection
-		$flags['multiextent'] = (ord (substr ($data, 25, 1)) >> 5) & 0x01; // Multi-Extent
+		$flags['reserved0'] = (ord (substr ($data, 25, 1)) >> 5) & 0x01; // Reserved
+		$flags['reserved1'] = (ord (substr ($data, 25, 1)) >> 6) & 0x01; // Reserved
+		$flags['multiextent'] = (ord (substr ($data, 25, 1)) >> 7) & 0x01; // Multi-Extent
 		$dr['file_flag'] = $flags;
 		$dr['il_fu_size'] = ord (substr ($data, 26, 1)); // Interleave File Unit Size
 		$dr['il_gap_size'] = ord (substr ($data, 27, 1)); // Interleave Gap Size
@@ -442,7 +444,7 @@ class ISO9660 {
 			$dt['sec']    = ord (substr ($data, 5, 1));        // Second (0 - 59)
 			$dt['gmt']    = ord (substr ($data, 6, 1));        // Greenwich Mean Time Offset (GMT-12(West) to GMT+13(East))
 		} else if (strlen ($data) == 17) {
-			$dt['year']   = (int)substr ($data, 0, 4);         // Years Since 1900
+			$dt['year']   = (int)substr ($data, 0, 4);         // Year (0 - 9999)
 			$dt['month']  = (int)substr ($data, 4, 2);         // Month (1 - 12)
 			$dt['day']    = (int)substr ($data, 6, 2);         // Day (1 - 31)
 			$dt['hour']   = (int)substr ($data, 8, 2);         // Hour (0 - 23)
