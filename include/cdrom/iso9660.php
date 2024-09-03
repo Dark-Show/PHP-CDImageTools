@@ -19,7 +19,21 @@ class ISO9660 {
 	private $o_cdemu = false; // CDEMU object
 	private $iso_vd = false; // Volume Descriptor
 	private $iso_pt = array(); // Path Table
-	private $iso_dr = array(); // Directory Recrods
+	private $iso_dr = array(); // Directory Records
+	private $iso_a_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
+	                             'H', 'I', 'J', 'K', 'L', 'M', 'N',
+	                             'O', 'P', 'Q', 'R', 'S', 'T', 'U',
+	                             'V', 'W', 'X', 'Y', 'Z', '0', '1',
+	                             '2', '3', '4', '5', '6', '7', '8',
+	                             '9', '_', '!', '"', '%', '&', "'",
+	                             '(', ')', '*', '+', ',', '-', '.',
+	                             '/', ':', ';', '<', '=', '>', '?');
+	private $iso_d_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
+	                             'H', 'I', 'J', 'K', 'L', 'M', 'N',
+	                             'O', 'P', 'Q', 'R', 'S', 'T', 'U',
+	                             'V', 'W', 'X', 'Y', 'Z', '0', '1',
+	                             '2', '3', '4', '5', '6', '7', '8',
+	                             '9', '_');
 	
 	// Sets CDEMU object
 	public function set_cdemu ($cdemu) {
