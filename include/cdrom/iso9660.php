@@ -279,7 +279,10 @@ class ISO9660 {
 		$vd['version'] = ord (substr ($data, 6, 1)); // Volume descriptor Version
 		
 		switch ($vd['type']) {
-			case 0: // TODO: Boot Record
+			case 0: // Boot Record
+				$vd['boot_sys_id']           = substr ($data, 7, 32);
+				$vd['boot_id']               = substr ($data, 39, 32);
+				$vd['system_use']            = substr ($data, 71, 1977);
 				break;
 			case 1: // Primary Volume Descriptor
 				$vd['unused0']               = substr ($data, 7, 1);
