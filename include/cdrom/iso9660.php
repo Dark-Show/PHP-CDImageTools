@@ -403,13 +403,8 @@ class ISO9660 {
 		$pt = array();
 		$pt['di_len'] = ord (substr ($data, 0, 1)); // Directory Identifier Length
 		$pt['ex_len'] = ord (substr ($data, 1, 1)); // Extended Attribute Record Length
-		if (!$endian) { // Little
-			$pt['ex_loc'] = unpack ('V', substr ($data, 2, 4))[1]; // Location of Extent
-			$pt['pd_num'] = unpack ('v', substr ($data, 6, 2))[1]; // Parent Directory Number
-		} else { // Big
-			$pt['ex_loc'] = unpack ('N', substr ($data, 2, 4))[1]; // Location of Extent
-			$pt['pd_num'] = unpack ('n', substr ($data, 6, 2))[1]; // Parent Directory Number
-		}
+		$pt['ex_loc'] = unpack (($endian ? 'N' : 'V'), substr ($data, 2, 4))[1]; // Location of Extent
+		$pt['pd_num'] = unpack (($endian ? 'n' : 'v'), substr ($data, 6, 2))[1]; // Parent Directory Number
 		$pt['dir_id'] = substr ($data, 8, $pt['di_len']); // Directory Identifier
 		if ($dr['di_len'] % 2 != 0)
 			$pt['di_pad'] = substr ($data, 8 + $pt['di_len'], 1); // Padding
@@ -439,53 +434,53 @@ class ISO9660 {
 	
 	private function directory_record ($data) {
 		$dr = array(); // Directory Record
-		$dr['dr_len'] = ord (substr ($data, 0, 1)); // Directory Record Length
+		$dr['dr_len']         = ord (substr ($data, 0, 1)); // Directory Record Length
 		if ($dr['dr_len'] == 0)
 			return ($dr);
-		$dr['ex_len'] = ord (substr ($data, 1, 1)); // Extended Attribute Record Length
-		$dr['ex_loc_le'] = unpack ('V', substr ($data, 2, 4))[1]; // Location of Extent
-		$dr['ex_loc_be'] = unpack ('N', substr ($data, 6, 4))[1]; // Location of Extent
-		$dr['data_len_le'] = unpack ('V', substr ($data, 10, 4))[1]; // Data Length
-		$dr['data_len_be'] = unpack ('N', substr ($data, 14, 4))[1]; // Data Length
+		$dr['ex_len']         = ord (substr ($data, 1, 1)); // Extended Attribute Record Length
+		$dr['ex_loc_le']      = unpack ('V', substr ($data, 2, 4))[1]; // Location of Extent
+		$dr['ex_loc_be']      = unpack ('N', substr ($data, 6, 4))[1]; // Location of Extent
+		$dr['data_len_le']    = unpack ('V', substr ($data, 10, 4))[1]; // Data Length
+		$dr['data_len_be']    = unpack ('N', substr ($data, 14, 4))[1]; // Data Length
 		$dr['recording_date'] = $this->iso_date_time (substr ($data, 18, 7)); // Recording Date/Time
 		$flags = array();
-		$flags['existance'] = (ord (substr ($data, 25, 1)) >> 0) & 0x01; // Existance
-		$flags['directory'] = (ord (substr ($data, 25, 1)) >> 1) & 0x01; // Directory
-		$flags['assoc_file'] = (ord (substr ($data, 25, 1)) >> 2) & 0x01; // Associated File
-		$flags['record'] = (ord (substr ($data, 25, 1)) >> 3) & 0x01; // Record
-		$flags['protection'] = (ord (substr ($data, 25, 1)) >> 4) & 0x01; // Protection
-		$flags['reserved0'] = (ord (substr ($data, 25, 1)) >> 5) & 0x01; // Reserved
-		$flags['reserved1'] = (ord (substr ($data, 25, 1)) >> 6) & 0x01; // Reserved
+		$flags['existance']   = (ord (substr ($data, 25, 1)) >> 0) & 0x01; // Existance
+		$flags['directory']   = (ord (substr ($data, 25, 1)) >> 1) & 0x01; // Directory
+		$flags['assoc_file']  = (ord (substr ($data, 25, 1)) >> 2) & 0x01; // Associated File
+		$flags['record']      = (ord (substr ($data, 25, 1)) >> 3) & 0x01; // Record
+		$flags['protection']  = (ord (substr ($data, 25, 1)) >> 4) & 0x01; // Protection
+		$flags['reserved0']   = (ord (substr ($data, 25, 1)) >> 5) & 0x01; // Reserved
+		$flags['reserved1']   = (ord (substr ($data, 25, 1)) >> 6) & 0x01; // Reserved
 		$flags['multiextent'] = (ord (substr ($data, 25, 1)) >> 7) & 0x01; // Multi-Extent
-		$dr['file_flag'] = $flags;
-		$dr['il_fu_size'] = ord (substr ($data, 26, 1)); // Interleave File Unit Size
-		$dr['il_gap_size'] = ord (substr ($data, 27, 1)); // Interleave Gap Size
-		$dr['vol_seq_num_le'] =  unpack ('v', substr ($data, 28, 2))[1]; // Volume Sequence Number
-		$dr['vol_seq_num_be'] =  unpack ('n', substr ($data, 30, 2))[1]; // Volume Sequence Number
-		$dr['fi_len'] = ord (substr ($data, 32, 1)); // Length of File Identifier
-		$dr['file_id'] = substr ($data, 33, $dr['fi_len']); // File Identifier
-		$dr['system_use'] = substr ($data, (34 + $dr['fi_len'] - ($dr['fi_len'] % 2 != 0 ? 1 : 0)), ($dr['dr_len'] - (34 - $dr['fi_len']))); // System Use
+		$dr['file_flag']      = $flags;
+		$dr['il_fu_size']     = ord (substr ($data, 26, 1)); // Interleave File Unit Size
+		$dr['il_gap_size']    = ord (substr ($data, 27, 1)); // Interleave Gap Size
+		$dr['vol_seq_num_le'] = unpack ('v', substr ($data, 28, 2))[1]; // Volume Sequence Number
+		$dr['vol_seq_num_be'] = unpack ('n', substr ($data, 30, 2))[1]; // Volume Sequence Number
+		$dr['fi_len']         = ord (substr ($data, 32, 1)); // Length of File Identifier
+		$dr['file_id']        = substr ($data, 33, $dr['fi_len']); // File Identifier
+		$dr['system_use']     = substr ($data, (34 + $dr['fi_len'] - ($dr['fi_len'] % 2 != 0 ? 1 : 0)), ($dr['dr_len'] - (34 - $dr['fi_len']))); // System Use
 		$dr['extension'] = array();
 		if (substr ($dr['system_use'], 6, 2) == "XA") { // Detect XA
 			$xa = array();
-			$xa['data'] = substr ($dr['system_use'], 0, 14);
-			$xa['owner'] = substr ($dr['system_use'], 0, 4);
+			$xa['data']                         = substr ($dr['system_use'], 0, 14);
+			$xa['owner']                        = substr ($dr['system_use'], 0, 4);
 			$xa['permissions'] = array();
-			$xa['permissions']['owner_read'] = (ord (substr ($dr['system_use'], 5, 1)) >> 0) & 0x01;
+			$xa['permissions']['owner_read']    = (ord (substr ($dr['system_use'], 5, 1)) >> 0) & 0x01;
 			$xa['permissions']['owner_execute'] = (ord (substr ($dr['system_use'], 5, 1)) >> 2) & 0x01;
-			$xa['permissions']['group_read'] = (ord (substr ($dr['system_use'], 5, 1)) >> 4) & 0x01;
+			$xa['permissions']['group_read']    = (ord (substr ($dr['system_use'], 5, 1)) >> 4) & 0x01;
 			$xa['permissions']['group_execute'] = (ord (substr ($dr['system_use'], 5, 1)) >> 6) & 0x01;
-			$xa['permissions']['world_read'] = (ord (substr ($dr['system_use'], 4, 1)) >> 0) & 0x01;
+			$xa['permissions']['world_read']    = (ord (substr ($dr['system_use'], 4, 1)) >> 0) & 0x01;
 			$xa['permissions']['world_execute'] = (ord (substr ($dr['system_use'], 4, 1)) >> 2) & 0x01;
 			$xa['attributes'] = array();
-			$xa['attributes']['form1'] = (ord (substr ($dr['system_use'], 4, 1)) >> 3) & 0x01;
-			$xa['attributes']['form2'] = (ord (substr ($dr['system_use'], 4, 1)) >> 4) & 0x01;
-			$xa['attributes']['interleaved'] = (ord (substr ($dr['system_use'], 4, 1)) >> 5) & 0x01;
-			$xa['attributes']['cdda'] = (ord (substr ($dr['system_use'], 4, 1)) >> 6) & 0x01;
-			$xa['attributes']['directory'] = (ord (substr ($dr['system_use'], 4, 1)) >> 7) & 0x01;
-			$xa['file_number'] = ord (substr ($dr['system_use'], 8, 1));
-			$xa['reserved'] = substr ($dr['system_use'], 9, 4);
-			$dr['extension']['xa'] = $xa;
+			$xa['attributes']['form1']          = (ord (substr ($dr['system_use'], 4, 1)) >> 3) & 0x01;
+			$xa['attributes']['form2']          = (ord (substr ($dr['system_use'], 4, 1)) >> 4) & 0x01;
+			$xa['attributes']['interleaved']    = (ord (substr ($dr['system_use'], 4, 1)) >> 5) & 0x01;
+			$xa['attributes']['cdda']           = (ord (substr ($dr['system_use'], 4, 1)) >> 6) & 0x01;
+			$xa['attributes']['directory']      = (ord (substr ($dr['system_use'], 4, 1)) >> 7) & 0x01;
+			$xa['file_number']                  = ord (substr ($dr['system_use'], 8, 1));
+			$xa['reserved']                     = substr ($dr['system_use'], 9, 4);
+			$dr['extension']['xa']              = $xa;
 		}
 		return ($dr);
 	}
