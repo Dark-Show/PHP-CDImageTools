@@ -307,29 +307,14 @@ class CDEMU {
 			return ($s);
 		}
 		
-		if (substr ($sector, 16, 4) == substr ($sector, 20, 4)) { // Detect XA extension (Subheader is repeated 2x)
-		
-			// Mode 2: XA Extension
-			//   Subheader - 4b x2 (repeated)
-			//   byte 0: File number
-			//   byte 1: Channel number
-			//   byte 2: Submode
-			//   byte 3: Coding information
-			$s['subheader'] = substr ($sector, 16, 8);
-			$xa = array(); // XA Sector Data [Subheader]
+		if (substr ($sector, 16, 4) == substr ($sector, 20, 4)) { // Detect XA extension
+			$s['subheader'] = substr ($sector, 16, 8); // Subheader - 4byte x2
+			$xa = array();
 			$xa['file_number'] = ord (substr ($sector, 16, 1)); // File Number
 			$xa['channel_number'] = ord (substr ($sector, 17, 1)); // Channel Number
-			$xa['submode'] = array(); // Submode
 
-			//   byte 2: Submode (MSB)
-			//	   bit 0: End of File
-			//	   bit 1: Real-Time
-			//	   bit 2: Form
-			//	   bit 3: Trigger Interrupt
-			//	   bit 4: Format Data
-			//	   bit 5: Format Audio
-			//	   bit 6: Format Video
-			//	   bit 7: End of Record
+			//   Submode
+			$xa['submode'] = array();
 			$xa['submode']['eof'] = (ord (substr ($sector, 18, 1)) >> 7) & 0x01; // End of File
 			$xa['submode']['realtime'] = (ord (substr ($sector, 18, 1)) >> 6) & 0x01; // Real Time
 			$xa['submode']['form'] = ((ord (substr ($sector, 18, 1)) >> 5) & 0x01) + 1; // XA Data Form
@@ -339,13 +324,7 @@ class CDEMU {
 			$xa['submode']['video'] = (ord (substr ($sector, 18, 1)) >> 1) & 0x01; // Format Video
 			$xa['submode']['eor'] = (ord (substr ($sector, 18, 1)) >> 0) & 0x01; // End of Record
 
-			//   byte 3: Coding information (MSB)
-			//	 Format Audio:
-			//	   bit   0: Reserved
-			//	   bit   1: Emphasis [on/off]
-			//	   bit 2-3: Bits Per Sample [4/8/R/R]
-			//	   bit 4-5: Sample Frequency [37.8k/18.9k/R/R]
-			//	   bit 6-7: Channels [Mono/Stereo/R/R]
+			//   Coding information
 			$xa['codeinfo'] = array(); // Format Coding Information
 			if ($xa['submode']['audio']) { // Format Audio
 				$xa['codeinfo']['reserved'] = (ord (substr ($sector, 19, 1)) >> 7) & 0x01; // Reserved

@@ -335,14 +335,57 @@ class ISO9660 {
 				$vd['application_use']       = substr ($data, 883, 512);
 				$vd['reserved1']             = substr ($data, 1395, 652);
 				break;
-			case 2: // TODO: Supplementary Volume Descriptor
+			case 2: // Supplimentary / Enhanced Volume Descriptor
+				$vd['vol_flags']             = ord (substr ($data, 7, 1));
+				$vd['sys_id']                = substr ($data, 8, 32);
+				$vd['vol_id']                = substr ($data, 40, 32);
+				$vd['unused0']               = substr ($data, 72, 8);
+				$vd['vol_space_size_le']     = unpack ('V', substr ($data, 80, 4))[1];
+				$vd['vol_space_size_be']     = unpack ('N', substr ($data, 84, 4))[1];
+				$vd['escape_sequences']      = substr ($data, 88, 32);
+				$vd['vol_set_size_le']       = unpack ('v', substr ($data, 120, 2))[1];
+				$vd['vol_set_size_be']       = unpack ('n', substr ($data, 122, 2))[1];
+				$vd['vol_seq_num_le']        = unpack ('v', substr ($data, 124, 2))[1];
+				$vd['vol_seq_num_be']        = unpack ('n', substr ($data, 126, 2))[1];
+				$vd['logical_block_le']      = unpack ('v', substr ($data, 128, 2))[1];
+				$vd['logical_block_be']      = unpack ('n', substr ($data, 130, 2))[1];
+				$vd['pathtable_size_le']     = unpack ('V', substr ($data, 132, 4))[1];
+				$vd['pathtable_size_be']     = unpack ('N', substr ($data, 136, 4))[1];
+				$vd['lo_pt_l']               = unpack ('V', substr ($data, 140, 4))[1];
+				$vd['loo_pt_l']              = unpack ('V', substr ($data, 144, 4))[1];
+				$vd['lo_pt_m']               = unpack ('N', substr ($data, 148, 4))[1];
+				$vd['loo_pt_m']              = unpack ('N', substr ($data, 152, 4))[1];
+				$vd['root_dir_rec']          = $this->directory_record (substr ($data, 156, 34));
+				$vd['vol_set_id']            = substr ($data, 190, 128);
+				$vd['pub_id']                = substr ($data, 318, 128);
+				$vd['data_prep_id']          = substr ($data, 446, 128);
+				$vd['application_id']        = substr ($data, 574, 128);
+				$vd['copyright_id']          = substr ($data, 702, 37);
+				$vd['abstract_id']           = substr ($data, 739, 37);
+				$vd['bibliographic_id']      = substr ($data, 776, 37);
+				$vd['vol_time_creation']     = $this->iso_date_time (substr ($data, 813, 17));
+				$vd['vol_time_modification'] = $this->iso_date_time (substr ($data, 830, 17));
+				$vd['vol_time_expiration']   = $this->iso_date_time (substr ($data, 847, 17));
+				$vd['vol_time_effective']    = $this->iso_date_time (substr ($data, 864, 17));
+				$vd['file_structure_ver']    = ord (substr ($data, 881, 1));
+				$vd['reserved0']             = substr ($data, 882, 1);
+				$vd['application_use']       = substr ($data, 883, 512);
+				$vd['reserved1']             = substr ($data, 1395, 652);
 				break;
-			case 3: // TODO: Volume Partition Descriptor
+			case 3: // Volume Partition Descriptor
+				$vd['unused0']               = substr ($data, 7, 1);
+				$vd['sys_id']                = substr ($data, 8, 32);
+				$vd['vol_part_id']           = substr ($data, 40, 32);
+				$vd['vol_part_loc_le']       = unpack ('V', substr ($data, 72, 4))[1];
+				$vd['vol_part_loc_be']       = unpack ('N', substr ($data, 76, 4))[1];
+				$vd['vol_part_size_le']      = unpack ('V', substr ($data, 80, 4))[1];
+				$vd['vol_part_size_be']      = unpack ('N', substr ($data, 84, 4))[1];
+				$vd['system_use']            = substr ($data, 88, 1960);
 				break;
 			case 255: // Volume Descriptor Set Terminator
 				$vd['reserved0']             = substr ($data, 7, 2041); // Reserved (Zero)
 				break;
-			default: // Error
+			default: // Reserved (invalid)
 				return (false);
 		}
 		return ($vd);
@@ -369,7 +412,7 @@ class ISO9660 {
 		}
 		$pt['dir_id'] = substr ($data, 8, $pt['di_len']); // Directory Identifier
 		if ($dr['di_len'] % 2 != 0)
-			$pt['di_pad'] = substr ($data, 8 + $pt['di_len'], 1); // Padding (if di_len is not even)
+			$pt['di_pad'] = substr ($data, 8 + $pt['di_len'], 1); // Padding
 		return ($pt);
 	}
 	
