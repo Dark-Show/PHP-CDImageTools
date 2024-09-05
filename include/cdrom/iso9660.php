@@ -293,7 +293,6 @@ class ISO9660 {
 		if (($vd['id'] = substr ($data, 1, 5)) !== "CD001") // Standard Identifier
 			return (false);
 		$vd['version'] = ord (substr ($data, 6, 1)); // Volume descriptor Version
-		
 		switch ($vd['type']) {
 			case 0: // Boot Record
 				$vd['boot_sys_id']           = substr ($data, 7, 32);
@@ -435,7 +434,7 @@ class ISO9660 {
 	}
 	
 	private function directory_record ($data) {
-		$dr = array(); // Directory Record
+		$dr = array();
 		$dr['dr_len']         = ord (substr ($data, 0, 1)); // Directory Record Length
 		if ($dr['dr_len'] == 0)
 			return ($dr);

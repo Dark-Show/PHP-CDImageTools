@@ -369,12 +369,13 @@ class CDEMU {
 				$s['edc_gen'] = $m2xa1_edc;
 				$s['ecc'] = substr ($sector, 2076, 276);
 				$s['ecc_gen'] = $this->ecc_compute ($sector);
-			} else { // Mode 2 XA Form 2
+				return ($s);
+			} else if ($s['xa']['submode']['form'] == 2) { // Mode 2 XA Form 2
 				$s['data'] = substr ($sector, 24, 2324); // 2324b
 				$s['edc'] = substr ($sector, 2348, 4);
 				$s['edc_gen'] = $m2xa2_edc;
+				return ($s);
 			}
-			return ($s);
 		}
 		
 		// Trust header for mode 2 detection
