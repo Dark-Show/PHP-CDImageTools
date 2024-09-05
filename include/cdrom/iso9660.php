@@ -272,10 +272,10 @@ class ISO9660 {
 		do {
 			if (($data = $this->o_cdemu->read ($loc++)) === false)
 				return (false);
-			if (($vd = $this->volume_descriptor ($data['data'])) === false or $vd['type'] == 255)
+			if (($vd = $this->volume_descriptor ($data['data'])) === false)
+				break; // Missing Volume Descriptor Set Terminator
+			if ($vd['type'] == 255)
 				$loc = false;
-			if ($vd === false)
-				continue;
 			if ($this->iso_vd === false)
 				$this->iso_vd = array ();
 			$this->iso_vd[$vd['type']] = $vd;
