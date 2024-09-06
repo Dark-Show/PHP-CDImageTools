@@ -47,10 +47,10 @@ class ISO9660 {
 	public function init () {
 		if ($this->o_cdemu === false) // CDEMU check
 			return (false);
-		if ($this->process_volume_descriptor() === false)
+		if ($this->process_volume_descriptor (16) === false)
 			return (false);
-		//if ($this->process_path_table() === false)
-		//	return (false);
+		if ($this->process_path_table ($this->iso_vd[1]['lo_pt_m'], 1) === false)
+			return (false);
 		$this->iso_dr = $this->process_directory_record ($this->iso_vd[1]['root_dir_rec']['ex_loc_be']);
 		return (true);
 	}
@@ -267,8 +267,7 @@ class ISO9660 {
 		return ($out);
 	}
 	
-	private function process_volume_descriptor() {
-		$loc = 16;
+	private function process_volume_descriptor ($loc) {
 		do {
 			if (($data = $this->o_cdemu->read ($loc++)) === false)
 				return (false);
@@ -392,24 +391,40 @@ class ISO9660 {
 		return ($vd);
 	}
 	
-	private function process_path_table() {
-		// TODO: Properly handle path tables
-		if (($data = $this->o_cdemu->read ($this->iso_vd[1]['lo_pt_m'])) === false) // Get Path Table Location
-			return (false);
-		$this->iso_pt = $this->path_table (substr ($data['data'], 0, $this->iso_vd[1]['pathtable_size_be']), 1); // Load Path Table
+	private function process_path_table ($loc, $endian = 0) {
+		$this->iso_pt = array();
+		$sec = ceil ($this->iso_vd[1]['pathtable_size_be'] / 2048);
+		$raw = '';
+		do {
+			if (($data = $this->o_cdemu->read ($loc)) === false)
+				return (false);
+			$raw .= $data['data'];
+			$loc++;
+		} while (--$sec > 0);
+		$raw = substr ($raw, 0, $this->iso_vd[1]['pathtable_size_be']);
+		while (strlen ($raw) > 0) {
+			$pt = $this->path_table ($raw, $endian);
+			$this->iso_pt[] = $pt;
+			$trim = 8 + $pt['di_len'] + ($pt['di_len'] % 2 != 0 ? 1 : 0);
+			$raw = substr ($raw, $trim);
+		}
 		return (true);
 	}
 	
-	private function path_table ($data, $endian = 0) {
+	private function path_table ($data, $endian) {
 		$pt = array();
 		$pt['di_len'] = ord (substr ($data, 0, 1)); // Directory Identifier Length
 		$pt['ex_len'] = ord (substr ($data, 1, 1)); // Extended Attribute Record Length
 		$pt['ex_loc'] = unpack (($endian ? 'N' : 'V'), substr ($data, 2, 4))[1]; // Location of Extent
 		$pt['pd_num'] = unpack (($endian ? 'n' : 'v'), substr ($data, 6, 2))[1]; // Parent Directory Number
 		$pt['dir_id'] = substr ($data, 8, $pt['di_len']); // Directory Identifier
-		if ($dr['di_len'] % 2 != 0)
+		if ($pt['di_len'] % 2 != 0)
 			$pt['di_pad'] = substr ($data, 8 + $pt['di_len'], 1); // Padding
 		return ($pt);
+	}
+	
+	public function get_path_table() {
+		return ($this->iso_pt);
 	}
 	
 	private function process_directory_record ($loc) {
@@ -418,7 +433,7 @@ class ISO9660 {
 		do {
 			$data = $this->o_cdemu->read ($loc);
 			$dr = $this->directory_record ($data['data']);
-				$sec = ($sec == 0 and isset ($dr['data_len_be'])) ? $dr['data_len_be'] / 2048 : $sec;
+			$sec = ($sec == 0 and isset ($dr['data_len_be'])) ? $dr['data_len_be'] / 2048 : $sec;
 			while ($dr['dr_len'] > 0) {
 				if ($dr['file_id'] != "\x00" and $dr['file_id'] != "\x01") { // Check for . and .. records
 					if ($dr['file_flag']['directory'])
