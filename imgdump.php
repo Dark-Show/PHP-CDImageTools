@@ -116,7 +116,7 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
 	if ($iso9660->init()) { // Process ISO9660 filesystem
-		print_r ($iso9660->get_path_table());
+		//print_r ($iso9660->get_path_table());
 		//die();
 		if (!is_dir ($dir_out . "contents"))
 			mkdir ($dir_out . "contents", 0777, true);
