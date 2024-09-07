@@ -401,12 +401,9 @@ class ISO9660 {
 			$raw .= $data['data'];
 			$loc++;
 		} while (--$sec > 0);
-		$raw = substr ($raw, 0, $this->iso_vd[1]['pathtable_size_be']);
-		while (strlen ($raw) > 0) {
-			$pt = $this->path_table ($raw, $endian);
+		while (($pt = $this->path_table ($raw, $endian))['di_len'] > 0) {
 			$this->iso_pt[] = $pt;
-			$trim = 8 + $pt['di_len'] + ($pt['di_len'] % 2 != 0 ? 1 : 0);
-			$raw = substr ($raw, $trim);
+			$raw = substr ($raw, 8 + $pt['di_len'] + ($pt['di_len'] % 2 != 0 ? 1 : 0));
 		}
 		return (true);
 	}
@@ -475,6 +472,8 @@ class ISO9660 {
 		$dr['vol_seq_num_be'] = unpack ('n', substr ($data, 30, 2))[1]; // Volume Sequence Number
 		$dr['fi_len']         = ord (substr ($data, 32, 1)); // Length of File Identifier
 		$dr['file_id']        = substr ($data, 33, $dr['fi_len']); // File Identifier
+		if ($dr['fi_len'] % 2 != 0)
+			$dr['fi_pad']     = substr ($data, 33 + $dr['fi_len'], 1);
 		$dr['system_use']     = substr ($data, (34 + $dr['fi_len'] - ($dr['fi_len'] % 2 != 0 ? 1 : 0)), ($dr['dr_len'] - (34 - $dr['fi_len']))); // System Use
 		$dr['extension'] = array();
 		if (substr ($dr['system_use'], 6, 2) == "XA") { // Detect XA
