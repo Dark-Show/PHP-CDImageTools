@@ -47,17 +47,20 @@ class ISO9660 {
 	public function init () {
 		if ($this->o_cdemu === false) // CDEMU check
 			return (false);
-		if ($this->process_volume_descriptor (16) === false)
+		if ($this->process_volume_descriptor() === false)
 			return (false);
-		if ($this->process_path_table() === false)
-			return (false);
-		$this->iso_dr = $this->process_directory_record ($this->iso_vd[1]['root_dir_rec']['ex_loc_be']);
+		$this->process_path_table();
+		$this->process_root_directory_record();
 		return (true);
 	}
 	
 	// Returns Primary Volume Descriptor
 	public function get_volume_descriptor() {
 		return ($this->iso_vd);
+	}
+	
+	public function get_path_table() {
+		return ($this->iso_pt);
 	}
 	
 	// Load System Area (Sectors 0 - 15)
@@ -270,6 +273,7 @@ class ISO9660 {
 	}
 	
 	private function process_volume_descriptor ($loc) {
+		$loc = 16;
 		do {
 			if (($data = $this->o_cdemu->read ($loc++)) === false)
 				return (false);
@@ -395,12 +399,12 @@ class ISO9660 {
 	
 	private function process_path_table() {
 		$this->iso_pt = array();
-		$sec = ceil ($this->iso_vd[1]['pathtable_size_be'] / 2048);
-		$this->iso_pt['lo_pt_m'] = $this->process_path_table_sub ($this->iso_vd[1]['lo_pt_m'], $sec, 1);
-		$this->iso_pt['loo_pt_m'] = $this->process_path_table_sub ($this->iso_vd[1]['loo_pt_m'], $sec, 1);
 		$sec = ceil ($this->iso_vd[1]['pathtable_size_le'] / 2048);
 		$this->iso_pt['lo_pt_l'] = $this->process_path_table_sub ($this->iso_vd[1]['lo_pt_l'], $sec, 0);
 		$this->iso_pt['loo_pt_l'] = $this->process_path_table_sub ($this->iso_vd[1]['loo_pt_l'], $sec, 0);
+		$sec = ceil ($this->iso_vd[1]['pathtable_size_be'] / 2048);
+		$this->iso_pt['lo_pt_m'] = $this->process_path_table_sub ($this->iso_vd[1]['lo_pt_m'], $sec, 1);
+		$this->iso_pt['loo_pt_m'] = $this->process_path_table_sub ($this->iso_vd[1]['loo_pt_m'], $sec, 1);
 	}
 	
 	private function process_path_table_sub ($loc, $sec, $endian) {
@@ -431,8 +435,8 @@ class ISO9660 {
 		return ($pt);
 	}
 	
-	public function get_path_table() {
-		return ($this->iso_pt);
+	private function process_root_directory_record() {
+		$this->iso_dr = $this->process_directory_record ($this->iso_vd[1]['root_dir_rec']['ex_loc_be']);
 	}
 	
 	private function process_directory_record ($loc) {
@@ -506,7 +510,7 @@ class ISO9660 {
 			$xa['attributes']['directory']      = (ord (substr ($dr['system_use'], 4, 1)) >> 7) & 0x01;
 			$xa['file_number']                  = ord (substr ($dr['system_use'], 8, 1));
 			$xa['reserved']                     = substr ($dr['system_use'], 9, 4);
-			$dr['extension']['xa']              = $xa;
+			$dr['extension']['xa'] = $xa;
 		}
 		return ($dr);
 	}
