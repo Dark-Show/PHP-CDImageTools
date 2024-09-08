@@ -49,7 +49,7 @@ class ISO9660 {
 			return (false);
 		if ($this->process_volume_descriptor (16) === false)
 			return (false);
-		if ($this->process_path_table ($this->iso_vd[1]['lo_pt_m'], 1) === false)
+		if ($this->process_path_table() === false)
 			return (false);
 		$this->iso_dr = $this->process_directory_record ($this->iso_vd[1]['root_dir_rec']['ex_loc_be']);
 		return (true);
@@ -229,6 +229,8 @@ class ISO9660 {
 		if ($file_out !== false) {
 			$dt = \DateTime::createFromFormat ($file['recording_date']['string_format'] , $file['recording_date']['string']);
 			touch ($file_out, $dt->getTimestamp());
+			// TODO: Check if file has version
+			//       If version == 1, mode 'w' else 'a'
 			$fh = fopen ($file_out, 'w');
 			fwrite ($fh, $out);
 			$out = '';
@@ -391,9 +393,18 @@ class ISO9660 {
 		return ($vd);
 	}
 	
-	private function process_path_table ($loc, $endian = 0) {
+	private function process_path_table() {
 		$this->iso_pt = array();
 		$sec = ceil ($this->iso_vd[1]['pathtable_size_be'] / 2048);
+		$this->iso_pt['lo_pt_m'] = $this->process_path_table_sub ($this->iso_vd[1]['lo_pt_m'], $sec, 1);
+		$this->iso_pt['loo_pt_m'] = $this->process_path_table_sub ($this->iso_vd[1]['loo_pt_m'], $sec, 1);
+		$sec = ceil ($this->iso_vd[1]['pathtable_size_le'] / 2048);
+		$this->iso_pt['lo_pt_l'] = $this->process_path_table_sub ($this->iso_vd[1]['lo_pt_l'], $sec, 0);
+		$this->iso_pt['loo_pt_l'] = $this->process_path_table_sub ($this->iso_vd[1]['loo_pt_l'], $sec, 0);
+	}
+	
+	private function process_path_table_sub ($loc, $sec, $endian) {
+		$out = array();
 		$raw = '';
 		do {
 			if (($data = $this->o_cdemu->read ($loc)) === false)
@@ -402,10 +413,10 @@ class ISO9660 {
 			$loc++;
 		} while (--$sec > 0);
 		while (($pt = $this->path_table ($raw, $endian))['di_len'] > 0) {
-			$this->iso_pt[] = $pt;
+			$out = $pt;
 			$raw = substr ($raw, 8 + $pt['di_len'] + ($pt['di_len'] % 2 != 0 ? 1 : 0));
 		}
-		return (true);
+		return ($out);
 	}
 	
 	private function path_table ($data, $endian) {
@@ -473,7 +484,7 @@ class ISO9660 {
 		$dr['fi_len']         = ord (substr ($data, 32, 1)); // Length of File Identifier
 		$dr['file_id']        = substr ($data, 33, $dr['fi_len']); // File Identifier
 		if ($dr['fi_len'] % 2 != 0)
-			$dr['fi_pad']     = substr ($data, 33 + $dr['fi_len'], 1);
+			$dr['fi_pad'] = substr ($data, 33 + $dr['fi_len'], 1);
 		$dr['system_use']     = substr ($data, (34 + $dr['fi_len'] - ($dr['fi_len'] % 2 != 0 ? 1 : 0)), ($dr['dr_len'] - (34 - $dr['fi_len']))); // System Use
 		$dr['extension'] = array();
 		if (substr ($dr['system_use'], 6, 2) == "XA") { // Detect XA
