@@ -162,15 +162,6 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 	return (true);
 }
 
-
-function iso9660_descriptor ($iso9660, $file) {
-	
-	$vd = $iso9660->get_volume_descriptor();
-	$vd = $iso9660->get_volume_descriptor();
-	$vd = $iso9660->get_volume_descriptor();
-	
-}
-
 function cli_dump_progress ($length, $pos) {
 	$p = $length > 0 ? floor ($pos / $length * 100) : 0;
 	echo ($cli = "      $pos / $length = $p%\r");
