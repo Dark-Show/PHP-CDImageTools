@@ -44,7 +44,7 @@ class ISO9660 {
 	}
 	
 	// Initilize filesystem for usage
-	public function init () {
+	public function init() {
 		if ($this->o_cdemu === false) // CDEMU check
 			return (false);
 		if ($this->process_volume_descriptor() === false)
@@ -54,16 +54,17 @@ class ISO9660 {
 		return (true);
 	}
 	
-	// Returns Primary Volume Descriptor
+	// Returns Volume Descriptor Array
 	public function get_volume_descriptor() {
 		return ($this->iso_vd);
 	}
 	
+	// Returns Path Table
 	public function get_path_table() {
 		return ($this->iso_pt);
 	}
 	
-	// Load System Area (Sectors 0 - 15)
+	// Returns System Area (Sectors 0 - 15)
 	public function &get_system_area() {
 		$fail = false;
 		$system_area = '';
@@ -85,7 +86,7 @@ class ISO9660 {
 	}
 	
 	// Array of files and directories
-	public function list_contents ($dir = '/', $recursive = true, $metadata = false) {
+	public function get_content ($dir = '/', $recursive = true, $metadata = false) {
 		$cd = array (''); // Current directory
 		$fl = array(); // Output File List
 		$files = $this->iso_dr; // Files
@@ -115,7 +116,7 @@ class ISO9660 {
 				else
 					$fl[] = implode ('/', $cd) . $file['file_id'] . '/';
 				if ($recursive)
-					$fl = array_merge ($fl, $this->list_contents (implode ('/', $cd) . $file['file_id'] . '/', true, $metadata));
+					$fl = array_merge ($fl, $this->get_content (implode ('/', $cd) . $file['file_id'] . '/', true, $metadata));
 			} else {
 				if ($metadata)
 					$fl[implode ('/', $cd) . $file['file_id']] = $file;
@@ -230,7 +231,7 @@ class ISO9660 {
 			$out = "RIFF" . pack ('V', $file_length + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $file_length) . $out;
 		
 		if ($file_out !== false) {
-			$dt = \DateTime::createFromFormat ($file['recording_date']['string_format'] , $file['recording_date']['string']);
+			$dt = \DateTime::createFromFormat ($file['recording_date']['string_format'], $file['recording_date']['string']);
 			touch ($file_out, $dt->getTimestamp());
 			// TODO: Check if file has version
 			//       If version == 1, mode 'w' else 'a'
@@ -272,7 +273,7 @@ class ISO9660 {
 		return ($out);
 	}
 	
-	private function process_volume_descriptor ($loc) {
+	private function process_volume_descriptor() {
 		$loc = 16;
 		do {
 			if (($data = $this->o_cdemu->read ($loc++)) === false)
@@ -518,22 +519,22 @@ class ISO9660 {
 	private function iso_date_time ($data) {
 		$dt = array();
 		if (strlen ($data) == 7) {
-			$dt['year']   = ord (substr ($data, 0, 1)) + 1900; // Years Since 1900
-			$dt['month']  = ord (substr ($data, 1, 1));        // Month (1 - 12)
-			$dt['day']    = ord (substr ($data, 2, 1));        // Day (1 - 31)
-			$dt['hour']   = ord (substr ($data, 3, 1));        // Hour (0 - 23)
-			$dt['min']    = ord (substr ($data, 4, 1));        // Minute (0 - 59)
-			$dt['sec']    = ord (substr ($data, 5, 1));        // Second (0 - 59)
-			$dt['gmt']    = ord (substr ($data, 6, 1));        // Greenwich Mean Time Offset (GMT-12(West) to GMT+13(East))
+			$dt['year']  = ord (substr ($data, 0, 1)) + 1900; // Years Since 1900
+			$dt['month'] = ord (substr ($data, 1, 1));        // Month (1 - 12)
+			$dt['day']   = ord (substr ($data, 2, 1));        // Day (1 - 31)
+			$dt['hour']  = ord (substr ($data, 3, 1));        // Hour (0 - 23)
+			$dt['min']   = ord (substr ($data, 4, 1));        // Minute (0 - 59)
+			$dt['sec']   = ord (substr ($data, 5, 1));        // Second (0 - 59)
+			$dt['gmt']   = ord (substr ($data, 6, 1));        // Greenwich Mean Time Offset (GMT-12(West) to GMT+13(East))
 		} else if (strlen ($data) == 17) {
-			$dt['year']   = (int)substr ($data, 0, 4);         // Year (0 - 9999)
-			$dt['month']  = (int)substr ($data, 4, 2);         // Month (1 - 12)
-			$dt['day']    = (int)substr ($data, 6, 2);         // Day (1 - 31)
-			$dt['hour']   = (int)substr ($data, 8, 2);         // Hour (0 - 23)
-			$dt['min']    = (int)substr ($data, 10, 2);        // Minute (0 - 59)
-			$dt['sec']    = (int)substr ($data, 12, 2);        // Second (0 - 59)
-			$dt['hsec']   = (int)substr ($data, 14, 2);        // Hundreth Second (0 - 99)
-			$dt['gmt']    = ord (substr ($data, 16, 1));       // Greenwich Mean Time Offset (GMT-12(West) to GMT+13(East))
+			$dt['year']  = (int)substr ($data, 0, 4);         // Year (0 - 9999)
+			$dt['month'] = (int)substr ($data, 4, 2);         // Month (1 - 12)
+			$dt['day']   = (int)substr ($data, 6, 2);         // Day (1 - 31)
+			$dt['hour']  = (int)substr ($data, 8, 2);         // Hour (0 - 23)
+			$dt['min']   = (int)substr ($data, 10, 2);        // Minute (0 - 59)
+			$dt['sec']   = (int)substr ($data, 12, 2);        // Second (0 - 59)
+			$dt['hsec']  = (int)substr ($data, 14, 2);        // Hundreth Second (0 - 99)
+			$dt['gmt']   = ord (substr ($data, 16, 1));       // Greenwich Mean Time Offset (GMT-12(West) to GMT+13(East))
 		} else
 			return (false);
 		

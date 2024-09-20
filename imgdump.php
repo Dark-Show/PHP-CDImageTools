@@ -13,6 +13,7 @@ include ('include/cdrom/iso9660.php');
 cli_process_argv ($argv);
 
 function cli_process_argv ($argv) {
+	echo ("CD-ROM Image Dumper v" . VERSION . "\n");
 	if (count ($argv) == 1)
 		cli_display_help ($argv);
 	
@@ -64,7 +65,6 @@ function cli_process_argv ($argv) {
 				cli_display_help ($argv);
 		}
 	}
-	echo ("CD-ROM Image Dumper v" . VERSION . "\n");
 	$cdemu = new CDEMU;
 	if (isset ($cue))
 		$cdemu->load_cue ($cue);
@@ -78,6 +78,8 @@ function cli_process_argv ($argv) {
 		}
 	}
 	dump_image ($cdemu, $dir_out, $remove_version);
+	// TODO: Create media descriptor file
+	
 	$cdemu->eject(); // Eject Disk
 }
 
@@ -116,13 +118,12 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
 	if ($iso9660->init()) { // Process ISO9660 filesystem
-		//print_r ($iso9660->get_path_table());
-		//die();
+		$desc = array ('type' => 'iso9660'); // Begin filesystem descriptor
 		if (!is_dir ($dir_out . "contents"))
 			mkdir ($dir_out . "contents", 0777, true);
 		$iso9660->save_system_area ($dir_out . "system_area.bin");
-		$contents = $iso9660->list_contents(); // List contents recursively
-		foreach ($contents as $c) { // Save contents to disk
+		$contents = $iso9660->get_content ('/', true, true); // List root recursively
+		foreach ($contents as $c => $meta) { // Save contents to disk
 			echo ("    $c\n");
 			if (substr ($c, -1, 1) == '/') { // Directory check
 				if (!is_dir ($dir_out . "contents" . $c))
@@ -154,9 +155,20 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 			} else if (is_resource ($fd))
 				fclose ($fd);
 		}
+		
+		// TODO: Create iso9660 filesystem descriptor file ($dir_out . "filesystem.desc")
 	}
 	// TODO: Dump binary data if not ISO9660
 	return (true);
+}
+
+
+function iso9660_descriptor ($iso9660, $file) {
+	
+	$vd = $iso9660->get_volume_descriptor();
+	$vd = $iso9660->get_volume_descriptor();
+	$vd = $iso9660->get_volume_descriptor();
+	
 }
 
 function cli_dump_progress ($length, $pos) {
@@ -167,7 +179,6 @@ function cli_dump_progress ($length, $pos) {
 }
 
 function cli_display_help ($argv) {
-	echo ("CD-ROM Image Dumper v" . VERSION . "\n");
 	echo ("  Arguments:\n");
 	echo ("    -cue \"FILE.CUE\"    Input CUE file\n");
 	echo ("    -iso \"FILE.ISO\"    Input ISO file\n");
