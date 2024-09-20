@@ -20,6 +20,7 @@ class ISO9660 {
 	private $iso_vd = false; // Volume Descriptor
 	private $iso_pt = array(); // Path Table
 	private $iso_dr = array(); // Directory Records
+	private $iso_ext = array(); // Extension List
 	private $iso_a_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
 	                             'H', 'I', 'J', 'K', 'L', 'M', 'N',
 	                             'O', 'P', 'Q', 'R', 'S', 'T', 'U',
@@ -49,6 +50,7 @@ class ISO9660 {
 			return (false);
 		if ($this->process_volume_descriptor() === false)
 			return (false);
+		$this->iso_ext = array();
 		$this->process_path_table();
 		$this->process_root_directory_record();
 		return (true);
@@ -62,6 +64,11 @@ class ISO9660 {
 	// Returns Path Table
 	public function get_path_table() {
 		return ($this->iso_pt);
+	}
+	
+	// Returns iso9660 extension array
+	public function get_extension() {
+		return ($this->iso_ext);
 	}
 	
 	// Returns System Area (Sectors 0 - 15)
@@ -493,6 +500,8 @@ class ISO9660 {
 		$dr['system_use']     = substr ($data, (34 + $dr['fi_len'] - ($dr['fi_len'] % 2 != 0 ? 1 : 0)), ($dr['dr_len'] - (34 - $dr['fi_len']))); // System Use
 		$dr['extension'] = array();
 		if (substr ($dr['system_use'], 6, 2) == "XA") { // Detect XA
+			if (!isset ($this->iso_ext['xa']))
+				$this->iso_ext['xa'] = 1;
 			$xa = array();
 			$xa['data']                         = substr ($dr['system_use'], 0, 14);
 			$xa['owner']                        = substr ($dr['system_use'], 0, 4);
