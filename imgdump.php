@@ -78,8 +78,6 @@ function cli_process_argv ($argv) {
 		}
 	}
 	dump_image ($cdemu, $dir_out, $remove_version);
-	// TODO: Create media descriptor file
-	
 	$cdemu->eject(); // Eject Disk
 }
 
@@ -97,6 +95,7 @@ function dump_image ($cdemu, $dir_out, $remove_version = false) {
 		} else // Audio
 			dump_audio ($cdemu, $dir_out . "Track $t.cdda");
 	}
+	// TODO: Create media descriptor file
 }
 
 // Dump audio track to $file_out
@@ -122,11 +121,21 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 			mkdir ($dir_out . "contents", 0777, true);
 		$desc = array ('iso9660' => array()); // Filesystem descriptor
 		$desc['iso9660']['extension'] = $iso9660->get_extension();
-		$iso9660->save_system_area ($dir_out . "system_area.bin");
-		$desc['iso9660']['system_area'] = "system_area.bin";
+		$desc['iso9660']['volume_descriptor'] = desc_volume_descriptor ($iso9660->get_volume_descriptor());
+		$desc['iso9660']['path_table'] = desc_path_table ($iso9660->get_path_table());
+		
+		if (($sa = $iso9660->get_system_area()) !== str_repeat ("\x00", strlen ($sa))) { // Check if system area is used
+			$desc['iso9660']['system_area'] = true;
+			file_put_contents ($dir_out . "System Area.bin", $sa);
+		} else
+			$desc['iso9660']['system_area'] = false;
+		unset ($sa);
+		
+		$desc['iso9660']['content'] = array();
 		$contents = $iso9660->get_content ('/', true, true); // List root recursively
 		foreach ($contents as $c => $meta) { // Save contents to disk
 			echo ("    $c\n");
+			$desc['iso9660']['content'][$c] = desc_directory_record ($meta);
 			if (substr ($c, -1, 1) == '/') { // Directory check
 				if (!is_dir ($dir_out . "contents" . $c))
 					mkdir ($dir_out . "contents" . $c, 0777, true);
@@ -162,6 +171,27 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 	}
 	// TODO: Dump binary data if not ISO9660
 	return (true);
+}
+
+
+// TODO: Generate slim volume descriptor
+//       Check for volume descriptor conformance issues
+function desc_volume_descriptor ($vd) {
+	$out = array ();
+	return ($out);
+}
+
+// TODO: Generate slim path table
+//       Check for path table conformance issues
+function desc_path_table ($pt) {
+	$out = array ();
+	return ($out);
+}
+
+// TODO: Generate slim directory record
+function desc_directory_record ($dr) {
+	$out = array ();
+	return ($out);
 }
 
 function cli_dump_progress ($length, $pos) {
