@@ -142,6 +142,14 @@ class ISO9660 {
 		return ($format);
 	}
 	
+	// Return version information from filename
+	private function &file_version ($filename) {
+		if (($pos = strpos ($filename, ';')) === false)
+			return (false);
+		$ver = substr ($filename, $pos + 1);
+		return ($ver);
+	}
+	
 	// Hash file data located at $path using $hash_algos
 	// Note: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
 	public function &hash_file ($path, $hash_algos) {
@@ -186,7 +194,7 @@ class ISO9660 {
 		return ($fail); // File not found
 	}
 	
-	// Return file data located at $path with optional header
+	// Return file data located at $path
 	public function &get_file ($path) {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);

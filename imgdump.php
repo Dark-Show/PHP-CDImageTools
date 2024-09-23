@@ -102,7 +102,7 @@ function dump_image ($cdemu, $dir_out, $remove_version = false) {
 function dump_audio ($cdemu, $file_out) {
 	$fp = fopen ($file_out, 'w');
 	$s_len = $cdemu->get_track_length (true);
-	for ($s_cur = 0; $s_cur < $s_len; $s_cur++){
+	for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
     	$sector = $cdemu->read();
 		if (isset ($sector['data']))
 			fputs ($fp, $sector['data']);
@@ -172,7 +172,6 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 	// TODO: Dump binary data if not ISO9660
 	return (true);
 }
-
 
 // TODO: Generate slim volume descriptor
 //       Check for volume descriptor conformance issues
