@@ -101,10 +101,10 @@ class ISO9660 {
 		foreach ($dir as $d) { // Loop through $dir, fill in $cd and get records
 			if ($d != null) {
 				$cd[] = $d;
-				$f = false; // File Found
+				$f = false;
 				foreach ($files as $file) { // Seek Files Records
 					if ($file['file_flag']['directory'] and $file['file_id'] == $d) {
-						$f = true; // Found File
+						$f = true;
 						$files = $file['contents']; // Update files
 						break;
 					}
@@ -176,13 +176,29 @@ class ISO9660 {
 	}
 	
 	// Dump file data located at $path to disk file location $path_output, optionally create symbolic links for cdda files
-	//   $cb_progress: function cli_progress ($length, $pos) { ... }
 	//   $cdda_symlink: Absolute or relative path to symlink directory. Relativity is from the dumped file $path
 	//                  "/home/user/cdemu/Track %%t.cdda" would turn into "/home/user/cdemu/Track 9.cdda"
 	//                  "/home/user/cdemu/Track %%T.cdda" would turn into "/home/user/cdemu/Track 09.cdda"
-	public function &save_file ($path, $path_output, $cdda_symlink = false, $cb_progress = false) {
+	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
+	//   $cb_progress: function cli_progress ($length, $pos) { ... }
+	public function &save_file ($path, $path_output, $cdda_symlink = false, $hash_algos = false, $cb_progress = false) {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);
+		if ($hash_algos !== false) {
+			if (is_string ($hash_algos))
+				$hash_algos = array ($hash_algos);
+			foreach ($hash_algos as $algo) { // Verify hash format support
+				$found = false;
+				foreach (hash_algos() as $sup_algo) {
+					if ($sup_algo == $algo) {
+						$found = true;
+						break;
+					}
+				}
+				if (!$found)
+					return ($fail);
+			}
+		}
 		foreach ($path as $d) {
 			if ($d == null)
 				continue;
@@ -191,7 +207,7 @@ class ISO9660 {
 					$files = $file['contents']; // Update files
 					break;
 				} else if (!$file['file_flag']['directory'] and ($file['file_id'] == $d)) // File
-					return ($this->file_read ($file, $cdda_symlink, $path_output, false, $cb_progress)); // Read file
+					return ($this->file_read ($file, $cdda_symlink, $path_output, $hash_algos, $cb_progress)); // Read file
 			}
 		}
 		$fail = false;
