@@ -142,7 +142,8 @@ class ISO9660 {
 		return ($format);
 	}
 	
-	// TODO: Hash file data located at $path using $hash_algos
+	// Hash file data located at $path using $hash_algos
+	// Note: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
 	public function &hash_file ($path, $hash_algos) {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);
@@ -161,7 +162,6 @@ class ISO9660 {
 			if (!$found)
 				return ($fail);
 		}
-		
 		
 		foreach ($path as $d) {
 			if ($d == null)
