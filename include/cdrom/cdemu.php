@@ -574,8 +574,12 @@ class CDEMU {
 	
 	// Track type
 	//   0 = Audio, 1 = Data
-	public function get_track_type() {
-		return ($this->CD['track'][$this->track]['format']);
+	public function get_track_type ($track = false) {
+		if ($track === false)
+			$track = $this->track;
+		if (!isset ($this->CD['track'][$track]))
+			return (false);
+		return ($this->CD['track'][$track]['format']);
 	}
 	
 	// CD length

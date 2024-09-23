@@ -142,7 +142,7 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 				continue;
 			}
 			$f = $remove_version ? $iso9660->format_filename ($c) : $c; // Remove version from filename
-			$symdepth = ($cdda_symlink != false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
+			$symdepth = ($cdda_symlink !== false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
 			$iso9660->save_file ($c, $dir_out . "contents" . $f, ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), false, 'cli_dump_progress');
 		}
 		
@@ -166,7 +166,6 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 			} else if (is_resource ($fd))
 				fclose ($fd);
 		}
-		
 		// TODO: Create iso9660 filesystem descriptor file ($dir_out . "filesystem.desc")
 	}
 	// TODO: Dump binary data if not ISO9660
