@@ -184,6 +184,7 @@ class ISO9660 {
 	public function &save_file ($path, $path_output, $cdda_symlink = false, $hash_algos = false, $cb_progress = false) {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);
+		$fail = false;
 		if ($hash_algos !== false) {
 			if (is_string ($hash_algos))
 				$hash_algos = array ($hash_algos);
@@ -210,7 +211,6 @@ class ISO9660 {
 					return ($this->file_read ($file, $cdda_symlink, $path_output, $hash_algos, $cb_progress)); // Read file
 			}
 		}
-		$fail = false;
 		return ($fail); // File not found
 	}
 	
