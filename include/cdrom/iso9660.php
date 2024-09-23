@@ -147,20 +147,6 @@ class ISO9660 {
 	public function &hash_file ($path, $hash_algos) {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);
-		$fail = false;
-		if (is_string ($hash_algos))
-			$hash_algos = array ($hash_algos);
-		foreach ($hash_algos as $algo) { // Verify hash format support
-			$found = false;
-			foreach (hash_algos() as $sup_algo) {
-				if ($sup_algo == $algo) {
-					$found = true;
-					break;
-				}
-			}
-			if (!$found)
-				return ($fail);
-		}
 		foreach ($path as $d) {
 			if ($d == null)
 				continue;
@@ -172,6 +158,7 @@ class ISO9660 {
 					return ($this->file_read ($file, false, false, $hash_algos, false)); // Read file
 			}
 		}
+		$fail = false;
 		return ($fail); // File not found
 	}
 	
@@ -179,27 +166,12 @@ class ISO9660 {
 	//   $cdda_symlink: Absolute or relative path to symlink directory. Relativity is from the dumped file $path
 	//                  "/home/user/cdemu/Track %%t.cdda" would turn into "/home/user/cdemu/Track 9.cdda"
 	//                  "/home/user/cdemu/Track %%T.cdda" would turn into "/home/user/cdemu/Track 09.cdda"
-	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
+	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b'). XA-CDDA files will not be hashed
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
 	public function &save_file ($path, $path_output, $cdda_symlink = false, $hash_algos = false, $cb_progress = false) {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);
 		$fail = false;
-		if ($hash_algos !== false) {
-			if (is_string ($hash_algos))
-				$hash_algos = array ($hash_algos);
-			foreach ($hash_algos as $algo) { // Verify hash format support
-				$found = false;
-				foreach (hash_algos() as $sup_algo) {
-					if ($sup_algo == $algo) {
-						$found = true;
-						break;
-					}
-				}
-				if (!$found)
-					return ($fail);
-			}
-		}
 		foreach ($path as $d) {
 			if ($d == null)
 				continue;
@@ -239,12 +211,6 @@ class ISO9660 {
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
 		
-		if ($hash_algos !== false) {
-			$hashes = array();
-			foreach ($hash_algos as $algo)
-				$hashes[$algo] = hash_init ($algo);
-		}
-		
 		// Note: For CDDA referenced files, we use $ex_loc_adj to seek backwards 2sec and add 2sec to the file_length
 		//       This is probably tied to cd-rom pregap and postgap for more exact trimming
 		$ex_loc_adj = (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) ? 150 : 0; // Header time starts at 00:02:00
@@ -252,6 +218,26 @@ class ISO9660 {
 			echo ("Error: Unexpected end of image!\n");
 			return ($fail);
 		}
+		
+		if ($hash_algos !== false) {
+			if (is_string ($hash_algos))
+				$hash_algos = array ($hash_algos);
+			foreach ($hash_algos as $algo) { // Verify hash format support
+				$found = false;
+				foreach (hash_algos() as $sup_algo) {
+					if ($sup_algo == $algo) {
+						$found = true;
+						break;
+					}
+				}
+				if (!$found)
+					return ($fail);
+			}
+			$hashes = array();
+			foreach ($hash_algos as $algo)
+				$hashes[$algo] = hash_init ($algo); // Init hash
+		}
+		
 		$raw = false;
 		$h_riff = false;
 		if (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) {
