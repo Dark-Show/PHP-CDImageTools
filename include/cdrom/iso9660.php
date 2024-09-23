@@ -148,10 +148,9 @@ class ISO9660 {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);
 		$fail = false;
-		// Make sure hash formats are supports 
 		if (is_string ($hash_algos))
 			$hash_algos = array ($hash_algos);
-		foreach ($hash_algos as $algo) {
+		foreach ($hash_algos as $algo) { // Verify hash format support
 			$found = false;
 			foreach (hash_algos() as $sup_algo) {
 				if ($sup_algo == $algo) {
@@ -162,7 +161,6 @@ class ISO9660 {
 			if (!$found)
 				return ($fail);
 		}
-		
 		foreach ($path as $d) {
 			if ($d == null)
 				continue;
@@ -276,8 +274,8 @@ class ISO9660 {
 		$length += strlen ($out);
 		
 		if ($hash_algos !== false) {
-			foreach ($hashes as $hash)
-				hash_update ($hash, $out);
+			foreach ($hash_algos as $algo)
+				hash_update ($hashes[$algo], $out);
 		}
 		
 		if ($h_riff)
@@ -305,23 +303,21 @@ class ISO9660 {
 				$length += strlen ($data['sector']);
 				$out .= $data['sector'];
 			} else if ($file_length - $length < strlen ($data['data'])) {
-				$data = substr ($data['data'], 0, $file_length - $length);
-				$length += strlen ($data);
-				$out .= $data;
+				$data['data'] = substr ($data['data'], 0, $file_length - $length);
+				$length += strlen ($data['data']);
+				$out .= $data['data'];
 			} else {
 				$length += strlen ($data['data']);
 				$out .= $data['data'];
 			}
-			if ($hash_algos !== false) {
-				foreach ($hashes as $hash)
-					hash_update ($hash, $out);
-			}
 			if ($file_out !== false) {
 				fwrite ($fh, $out);
 				$out = '';
-			} else if ($hash_algos !== false)
-				$out = '';
-			
+			}
+			if ($hash_algos !== false) {
+				foreach ($hashes as $hash)
+					hash_update ($hash, ($raw ? $data['sector'] : $data['data']));
+			}
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $file_length, $length);
 		}
