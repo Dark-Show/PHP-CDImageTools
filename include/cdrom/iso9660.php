@@ -142,6 +142,41 @@ class ISO9660 {
 		return ($format);
 	}
 	
+	// TODO: Hash file data located at $path using $hash_algos
+	public function &hash_file ($path, $hash_algos) {
+		$files = $this->iso_dr;
+		$path = explode ('/', $path);
+		$fail = false;
+		// Make sure hash formats are supports 
+		if (is_string ($hash_algos))
+			$hash_algos = array ($hash_algos);
+		foreach ($hash_algos as $algo) {
+			$found = false;
+			foreach (hash_algos() as $sup_algo) {
+				if ($sup_algo == $algo) {
+					$found = true;
+					break;
+				}
+			}
+			if (!$found)
+				return ($fail);
+		}
+		
+		
+		foreach ($path as $d) {
+			if ($d == null)
+				continue;
+			foreach ($files as $file) { // Seek Files List
+				if ($file['file_flag']['directory'] and $file['file_id'] == $d) { // Directory
+					$files = $file['contents']; // Update files
+					break;
+				} else if (!$file['file_flag']['directory'] and ($file['file_id'] == $d)) // File
+					return ($this->file_read ($file, false, false, $hash_algos, false)); // Read file
+			}
+		}
+		return ($fail); // File not found
+	}
+	
 	// Dump file data located at $path to disk file location $path_output, optionally create symbolic links for cdda files
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
 	//   $cdda_symlink: Absolute or relative path to symlink directory. Relativity is from the dumped file $path
@@ -158,7 +193,7 @@ class ISO9660 {
 					$files = $file['contents']; // Update files
 					break;
 				} else if (!$file['file_flag']['directory'] and ($file['file_id'] == $d)) // File
-					return ($this->file_read ($file, $cdda_symlink, $path_output, $cb_progress)); // Read file
+					return ($this->file_read ($file, $cdda_symlink, $path_output, false, $cb_progress)); // Read file
 			}
 		}
 		$fail = false;
@@ -177,18 +212,24 @@ class ISO9660 {
 					$files = $file['contents']; // Update files
 					break;
 				} else if (!$file['file_flag']['directory'] and ($file['file_id'] == $d)) // File
-					return ($this->file_read ($file, false)); // Read file
+					return ($this->file_read ($file)); // Read file
 			}
 		}
 		$fail = false;
 		return ($fail); // File not found
 	}
 	
-	private function &file_read ($file, $cdda_symlink = false, $file_out = false, $cb_progress = false) {
+	private function &file_read ($file, $cdda_symlink = false, $file_out = false, $hash_algos = false, $cb_progress = false) {
 		$fail = false;
 		$length = 0;
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
+		
+		if ($hash_algos !== false) {
+			$hashes = array();
+			foreach ($hash_algos as $algo)
+				$hashes[$algo] = hash_init ($algo);
+		}
 		
 		// Note: For CDDA referenced files, we use $ex_loc_adj to seek backwards 2sec and add 2sec to the file_length
 		//       This is probably tied to cd-rom pregap and postgap for more exact trimming
@@ -234,6 +275,11 @@ class ISO9660 {
 			$out = substr ($out, 0, $file_length - strlen ($out));
 		$length += strlen ($out);
 		
+		if ($hash_algos !== false) {
+			foreach ($hashes as $hash)
+				hash_update ($hash, $out);
+		}
+		
 		if ($h_riff)
 			$out = "RIFF" . pack ('V', $file_length + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $file_length) . $out;
 		
@@ -266,16 +312,27 @@ class ISO9660 {
 				$length += strlen ($data['data']);
 				$out .= $data['data'];
 			}
+			if ($hash_algos !== false) {
+				foreach ($hashes as $hash)
+					hash_update ($hash, $out);
+			}
 			if ($file_out !== false) {
 				fwrite ($fh, $out);
 				$out = '';
-			}
+			} else if ($hash_algos !== false)
+				$out = '';
+			
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $file_length, $length);
 		}
 		if ($file_out !== false) {
 			fclose ($fh);
 			$out = true;
+		}
+		if ($hash_algos !== false) {
+			foreach ($hashes as $algo => $hash)
+				$hashes[$algo] = hash_final ($hash, false);
+			return ($hashes);
 		}
 		return ($out);
 	}
@@ -290,7 +347,7 @@ class ISO9660 {
 			if ($vd['type'] == 255)
 				$loc = false;
 			if ($this->iso_vd === false)
-				$this->iso_vd = array ();
+				$this->iso_vd = array();
 			$this->iso_vd[$vd['type']] = $vd;
 		} while ($loc !== false);
 		if (!isset ($this->iso_vd[1])) {
