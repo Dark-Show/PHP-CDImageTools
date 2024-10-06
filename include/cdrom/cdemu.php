@@ -544,6 +544,7 @@ class CDEMU {
 	public function save_track ($file, $track = false, $hash_algos = false, $cb_progress = false) {
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
+		
 		if ($hash_algos !== false) {
 			if (is_string ($hash_algos))
 				$hash_algos = array ($hash_algos);
@@ -572,7 +573,7 @@ class CDEMU {
 		$s_len = $this->get_track_length (true);
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
 			$sector = $this->read();
-			if (isset ($sector['data']))
+			if (!isset ($sector['data']))
 				return (false); // Data read error
 			if (fwrite ($fp, $sector['data']) === false)
 				return (false); // File error: out of space
@@ -581,7 +582,7 @@ class CDEMU {
 					hash_update ($hash, $sector['data']);
 			}
 			if ($cb_progress !== false)
-				call_user_func ($cb_progress, $s_len * 2352, $cdemu->get_track_time (true) * 2352);
+				call_user_func ($cb_progress, $s_len * 2352, $this->get_track_time (true) * 2352);
 		}
 		fclose ($fp);
 		if ($hash_algos !== false) {
