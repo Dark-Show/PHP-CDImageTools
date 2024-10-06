@@ -89,7 +89,7 @@ function dump_image ($cdemu, $dir_out, $remove_version = false) {
 		if (!$cdemu->set_track ($track))
 			die ("Error: Unexpected end of image!\n");
 		if ($cdemu->get_track_type() == 0) // Audio
-			$cdemu->save_track ($dir_out . "Track $t.cdda");
+			$cdemu->save_track ($dir_out . "Track $t.cdda", false, false, 'cli_dump_progress');
 		else { // Data
 			if (!is_dir ($dir_out . "Track $t"))
 				mkdir ($dir_out . "Track $t", 0777, true);
