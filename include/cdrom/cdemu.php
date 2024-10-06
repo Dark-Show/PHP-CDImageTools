@@ -541,7 +541,10 @@ class CDEMU {
 	}
 	
 	// Save track to file, with optional hashing support
+	// Note: If $file is false only hash will be computed
 	public function save_track ($file, $track = false, $hash_algos = false, $cb_progress = false) {
+		if ($file === false and $hash_algos === false) // Nothing to do
+			return (false);
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
 		
@@ -567,7 +570,7 @@ class CDEMU {
 		if ($track !== false and !$this->set_track ($track))
 			return (false); // Track chance error (Image ended)
 		
-		if (($fp = fopen ($file, 'w')) === false)
+		if ($file !== false and ($fp = fopen ($file, 'w')) === false)
 			return (false); // File error: could not open file for writing
 			
 		$s_len = $this->get_track_length (true);
@@ -575,7 +578,7 @@ class CDEMU {
 			$sector = $this->read();
 			if (!isset ($sector['data']))
 				return (false); // Data read error
-			if (fwrite ($fp, $sector['data']) === false)
+			if ($file !== false and fwrite ($fp, $sector['data']) === false)
 				return (false); // File error: out of space
 			if ($hash_algos !== false) {
 				foreach ($hashes as $hash)
@@ -584,7 +587,8 @@ class CDEMU {
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $s_len * 2352, $this->get_track_time (true) * 2352);
 		}
-		fclose ($fp);
+		if ($file !== false)
+			fclose ($fp);
 		if ($hash_algos !== false) {
 			foreach ($hashes as $algo => $hash)
 				$hashes[$algo] = hash_final ($hash, false);

@@ -296,6 +296,7 @@ class ISO9660 {
 			touch ($file_out, $dt->getTimestamp());
 			// TODO: Check if file has version
 			//       If version == 1, mode 'w' else 'a'
+			// TODO: Describe file size and positions for each version of file
 			$fh = fopen ($file_out, 'w');
 			fwrite ($fh, $out);
 			$out = '';
