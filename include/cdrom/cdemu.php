@@ -540,10 +540,29 @@ class CDEMU {
 		return ($t);
 	}
 	
-	// Save track to file
-	public function save_track ($file, $track = false) {
+	// Save track to file, with optional hashing support
+	public function save_track ($file, $track = false, $hash_algos = false) {
+		if ($hash_algos !== false) {
+			if (is_string ($hash_algos))
+				$hash_algos = array ($hash_algos);
+			foreach ($hash_algos as $algo) { // Verify hash format support
+				$found = false;
+				foreach (hash_algos() as $sup_algo) {
+					if ($sup_algo == $algo) {
+						$found = true;
+						break;
+					}
+				}
+				if (!$found)
+					return (false); // Error: Hash not found
+			}
+			$hashes = array();
+			foreach ($hash_algos as $algo)
+				$hashes[$algo] = hash_init ($algo); // Init hash
+		}
+		
 		if ($track !== false and !$this->set_track ($track))
-			return (-1); // Track chance error (Image ended)
+			return (false); // Track chance error (Image ended)
 		
 		if (($fp = fopen ($file, 'w')) === false)
 			return (false); // File error: could not open file for writing
@@ -553,8 +572,17 @@ class CDEMU {
 			$sector = $this->read();
 			if (isset ($sector['data']) and fwrite ($fp, $sector['data']) === false)
 				return (false); // File error: out of space
+			if ($hash_algos !== false) {
+				foreach ($hashes as $hash)
+					hash_update ($hash, $sector['data']);
+			}
 		}
 		fclose ($fp);
+		if ($hash_algos !== false) {
+			foreach ($hashes as $algo => $hash)
+				$hashes[$algo] = hash_final ($hash, false);
+			return ($hashes);
+		}
 		return (true);	
 	}
 	
