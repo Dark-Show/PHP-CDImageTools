@@ -88,28 +88,15 @@ function dump_image ($cdemu, $dir_out, $remove_version = false) {
 		echo ("  Track $t\n");
 		if (!$cdemu->set_track ($track))
 			die ("Error: Unexpected end of image!\n");
-		if ($cdemu->get_track_type() == 1) { // Data
+		if ($cdemu->get_track_type() == 0) // Audio
+			$cdemu->save_track ($dir_out . "Track $t.cdda");
+		else { // Data
 			if (!is_dir ($dir_out . "Track $t"))
 				mkdir ($dir_out . "Track $t", 0777, true);
 			dump_data ($cdemu, $dir_out . "Track $t/", "../../Track %%T.cdda", $remove_version);
-		} else // Audio
-			dump_audio ($cdemu, $dir_out . "Track $t.cdda");
+		}
 	}
 	// TODO: Create media descriptor file
-}
-
-// Dump audio track to $file_out
-function dump_audio ($cdemu, $file_out) {
-	$fp = fopen ($file_out, 'w');
-	$s_len = $cdemu->get_track_length (true);
-	for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
-    	$sector = $cdemu->read();
-		if (isset ($sector['data']))
-			fputs ($fp, $sector['data']);
-		cli_dump_progress ($s_len * 2352, $cdemu->get_track_time (true) * 2352);
-	}
-	fclose ($fp);
-	return (true);
 }
 
 // Dump data track to $dir_out

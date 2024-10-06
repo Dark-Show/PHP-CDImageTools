@@ -540,6 +540,24 @@ class CDEMU {
 		return ($t);
 	}
 	
+	// Save track to file
+	public function save_track ($file, $track = false) {
+		if ($track !== false and !$this->set_track ($track))
+			return (-1); // Track chance error (Image ended)
+		
+		if (($fp = fopen ($file, 'w')) === false)
+			return (false); // File error: could not open file for writing
+			
+		$s_len = $this->get_track_length (true);
+		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
+			$sector = $this->read();
+			if (isset ($sector['data']) and fwrite ($fp, $sector['data']) === false)
+				return (false); // File error: out of space
+		}
+		fclose ($fp);
+		return (true);	
+	}
+	
 	// Current track
 	public function get_track() {
 		return ($this->track);
