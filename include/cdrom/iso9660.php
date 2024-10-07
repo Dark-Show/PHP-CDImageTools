@@ -231,15 +231,11 @@ class ISO9660 {
 			if (is_string ($hash_algos))
 				$hash_algos = array ($hash_algos);
 			foreach ($hash_algos as $algo) { // Verify hash format support
-				$found = false;
 				foreach (hash_algos() as $sup_algo) {
-					if ($sup_algo == $algo) {
-						$found = true;
-						break;
-					}
+					if ($sup_algo == $algo)
+						continue 2;
 				}
-				if (!$found)
-					return ($fail);
+				return (false); // Error: Hash not found
 			}
 			$hashes = array();
 			foreach ($hash_algos as $algo)
