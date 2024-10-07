@@ -540,6 +540,12 @@ class CDEMU {
 		return ($t);
 	}
 	
+	// Hash track data using $hash_algos
+	// Note: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
+	public function hash_track ($hash_algos, $track = false) {
+		return ($this->save_track (false, $track, $hash_algos, false));
+	}
+	
 	// Save track to file, with optional hashing support
 	// Note: If $file is false only hash will be computed
 	public function save_track ($file, $track = false, $hash_algos = false, $cb_progress = false) {
