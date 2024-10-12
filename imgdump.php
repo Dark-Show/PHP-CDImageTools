@@ -208,7 +208,7 @@ function cli_display_help ($argv) {
 	echo ("    -output \"PATH/\"    Output directory\n\n");
 	echo ("  Example Usages:\n");
 	echo ("    " . $argv[0] . " -cue \"input.cue\" -output \"output/\"\n");
-	echo ("    " . $argv[0] . " -iso \"input.iso\" -output \"output/\" -strip_version\n");
+	echo ("    " . $argv[0] . " -iso \"input.iso\" -output \"output/\"\n");
 	echo ("    " . $argv[0] . " -bin \"Track01.bin\" -bin \"Track02.bin\" -output \"output/\"\n");
 	die();
 }
