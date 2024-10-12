@@ -83,6 +83,10 @@ function cli_process_argv ($argv) {
 
 // Dump image loaded by cdemu
 function dump_image ($cdemu, $dir_out, $remove_version = false) {
+	//echo ("  Hashing image...\n");
+	//$hash = $cdemu->hash_image ('sha1', 'cli_dump_progress');
+	//print_r ($hash);
+	
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) {
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
 		echo ("  Track $t\n");

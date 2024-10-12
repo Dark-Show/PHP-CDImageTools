@@ -521,6 +521,46 @@ class CDEMU {
 		$seconds = ($seconds - ($minutes * 60)) + 2;
 		return (chr ($minutes) . chr ($seconds)  . chr ($frames));
 	}
+	
+	
+	// Hash entire image
+	// TODO: optionally hash tracks individually
+	public function hash_image ($hash_algos, $cb_progress = false) {
+		if (!is_callable ($cb_progress))
+			$cb_progress = false;
+		if (is_string ($hash_algos))
+			$hash_algos = array ($hash_algos);
+		foreach ($hash_algos as $algo) { // Verify hash format support
+			foreach (hash_algos() as $sup_algo) {
+				if ($sup_algo == $algo)
+					continue 2;
+			}
+			return (false); // Error: Hash not found
+		}
+		$hashes = array();
+		foreach ($hash_algos as $algo)
+			$hashes[$algo] = hash_init ($algo); // Init hash
+		
+		if (!$this->set_track (1))
+			return (false); // Track chance error (Image ended)
+		
+		$s_len = $this->CD['sector_count'];
+		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
+			$sector = $this->read();
+			if (!isset ($sector['data']))
+				return (false); // Data read error
+			if ($hash_algos !== false) {
+				foreach ($hashes as $hash)
+					hash_update ($hash, $sector['sector']);
+			}
+			if ($cb_progress !== false)
+				call_user_func ($cb_progress, $s_len, $s_cur + 1);
+		}
+		
+		foreach ($hashes as $algo => $hash)
+			$hashes[$algo] = hash_final ($hash, false);
+		return ($hashes);
+	}
 
 	// Change Track
 	public function set_track ($track) {
@@ -542,8 +582,8 @@ class CDEMU {
 	
 	// Hash track data using $hash_algos
 	// Note: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
-	public function hash_track ($hash_algos, $track = false) {
-		return ($this->save_track (false, $track, $hash_algos, false));
+	public function hash_track ($hash_algos, $track = false, $cb_progress = false) {
+		return ($this->save_track (false, $track, $hash_algos, $cb_progress));
 	}
 	
 	// Save track to file, with optional hashing support
