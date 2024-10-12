@@ -79,7 +79,6 @@ function cli_process_argv ($argv) {
 
 // Dump image loaded by cdemu
 function dump_image ($cdemu, $dir_out, $hash_algos = false) {
-	echo ("  Hashing image...\n");
 	$hash = $cdemu->hash_image ($hash_algos, 'cli_dump_progress');
 	if (is_array ($hash)) {
 		foreach ($hash as $algo => $res)
@@ -95,13 +94,13 @@ function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 			$hash = $cdemu->save_track ($dir_out . "Track $t.cdda", false, $hash_algos, 'cli_dump_progress');
 			if (is_array ($hash)) {
 				foreach ($hash as $algo => $res)
-					echo ("      $algo: $res\n");
+					echo ("    $algo: $res\n");
 				echo ("\n");
 			}
 		} else { // Data
 			if (!is_dir ($dir_out . "Track $t"))
 				mkdir ($dir_out . "Track $t", 0777, true);
-			dump_data ($cdemu, $dir_out . "Track $t/", "../../Track %%T.cdda", 'sha1');
+			dump_data ($cdemu, $dir_out . "Track $t/", "../../Track %%T.cdda", $hash_algos);
 		}
 	}
 	// TODO: Create media descriptor file
@@ -179,7 +178,7 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $hash_algos = false
 			if (!isset ($access[$i])) {
 				if (!is_resource ($fd)) {
 					$lba = str_pad ($i, strlen ($t_end), '0', STR_PAD_LEFT);
-					echo ("  LBA: $lba\n");
+					echo ("    LBA: $lba\n");
 					$fd = fopen ($dir_out . "LBA$lba.bin", "w");
 					$data = $cdemu->read ($i);
 					fputs ($fd, $data['sector']);
