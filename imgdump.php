@@ -73,42 +73,48 @@ function cli_process_argv ($argv) {
 			$cdemu->load_bin ($b);
 		}
 	}
-	dump_image ($cdemu, $dir_out);
+	dump_image ($cdemu, $dir_out, 'sha1');
 	$cdemu->eject(); // Eject Disk
 }
 
 // Dump image loaded by cdemu
-function dump_image ($cdemu, $dir_out) {
+function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 	echo ("  Hashing image...\n");
-	$hash = $cdemu->hash_image ('sha1', 'cli_dump_progress');
-	foreach ($hash as $algo => $res)
-		echo ("    $algo: $res\n");
-	echo ("\n");
+	$hash = $cdemu->hash_image ($hash_algos, 'cli_dump_progress');
+	if (is_array ($hash)) {
+		foreach ($hash as $algo => $res)
+			echo ("    $algo: $res\n");
+		echo ("\n");
+	}
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) {
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
 		echo ("  Track $t\n");
 		if (!$cdemu->set_track ($track))
 			die ("Error: Unexpected end of image!\n");
 		if ($cdemu->get_track_type() == 0) { // Audio
-			$hash = $cdemu->save_track ($dir_out . "Track $t.cdda", false, 'sha1', 'cli_dump_progress');
-			foreach ($hash as $algo => $res)
-				echo ("      $algo: $res\n");
-			echo ("\n");
+			$hash = $cdemu->save_track ($dir_out . "Track $t.cdda", false, $hash_algos, 'cli_dump_progress');
+			if (is_array ($hash)) {
+				foreach ($hash as $algo => $res)
+					echo ("      $algo: $res\n");
+				echo ("\n");
+			}
 		} else { // Data
 			if (!is_dir ($dir_out . "Track $t"))
 				mkdir ($dir_out . "Track $t", 0777, true);
-			dump_data ($cdemu, $dir_out . "Track $t/", "../../Track %%T.cdda", true);
+			dump_data ($cdemu, $dir_out . "Track $t/", "../../Track %%T.cdda", 'sha1');
 		}
 	}
 	// TODO: Create media descriptor file
 }
 
 // Dump data track to $dir_out
-function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = false) {
-	$hash = $cdemu->hash_track ('sha1', $cdemu->get_track(), 'cli_dump_progress');
-	foreach ($hash as $algo => $res)
-		echo ("    $algo: $res\n");
-	echo ("\n");
+function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $hash_algos = false) {
+	$hash = $cdemu->hash_track ($hash_algos, $cdemu->get_track(), 'cli_dump_progress');
+	if (is_array ($hash)) {
+		foreach ($hash as $algo => $res)
+			echo ("    $algo: $res\n");
+		echo ("\n");
+	}
 	
 	$cdemu->clear_sector_access_list();
 	$iso9660 = new CDEMU\ISO9660;
@@ -138,9 +144,9 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 					mkdir ($dir_out . "contents" . $c, 0777, true);
 				continue;
 			}
-			$f = $remove_version ? $iso9660->format_filename ($c) : $c; // Remove version from filename
+			
 			$symdepth = ($cdda_symlink !== false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
-			$hash = $iso9660->save_file ($c, $dir_out . "contents" . $f, ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), 'sha1', 'cli_dump_progress');
+			$hash = $iso9660->save_file ($c, $dir_out . "contents" . $iso9660->format_filename ($c), ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), $hash_algos, 'cli_dump_progress');
 			if (is_array ($hash)) {
 				foreach ($hash as $algo => $res)
 					echo ("      $algo: $res\n");
@@ -157,7 +163,7 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 			if (!isset ($access[$i])) {
 				if (!is_resource ($fd)) {
 					$lba = str_pad ($i, strlen ($t_end), '0', STR_PAD_LEFT);
-					echo ("LBA: $lba\n");
+					echo ("  LBA: $lba\n");
 					$fd = fopen ($dir_out . "LBA$lba.bin", "w");
 					$data = $cdemu->read ($i);
 					fputs ($fd, $data['sector']);
