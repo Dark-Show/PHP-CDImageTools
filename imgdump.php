@@ -105,6 +105,11 @@ function dump_image ($cdemu, $dir_out) {
 
 // Dump data track to $dir_out
 function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = false) {
+	$hash = $cdemu->hash_track ('sha1', $cdemu->get_track(), 'cli_dump_progress');
+	foreach ($hash as $algo => $res)
+		echo ("    $algo: $res\n");
+	echo ("\n");
+	
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
 	if ($iso9660->init()) { // Process ISO9660 filesystem

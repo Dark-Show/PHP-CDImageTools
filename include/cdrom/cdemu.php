@@ -626,7 +626,7 @@ class CDEMU {
 					hash_update ($hash, $sector['sector']);
 			}
 			if ($cb_progress !== false)
-				call_user_func ($cb_progress, $s_len * 2352, $this->get_track_time (true) * 2352);
+				call_user_func ($cb_progress, $s_len, $s_cur + 1);
 		}
 		if ($file !== false)
 			fclose ($fp);
