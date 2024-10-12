@@ -524,7 +524,6 @@ class CDEMU {
 	
 	
 	// Hash entire image
-	// TODO: optionally hash tracks individually
 	public function hash_image ($hash_algos, $cb_progress = false) {
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
@@ -618,13 +617,13 @@ class CDEMU {
 		$s_len = $this->get_track_length (true);
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
 			$sector = $this->read();
-			if (!isset ($sector['data']))
+			if (!isset ($sector['sector']))
 				return (false); // Data read error
-			if ($file !== false and fwrite ($fp, $sector['data']) === false)
+			if ($file !== false and fwrite ($fp, $sector['sector']) === false)
 				return (false); // File error: out of space
 			if ($hash_algos !== false) {
 				foreach ($hashes as $hash)
-					hash_update ($hash, $sector['data']);
+					hash_update ($hash, $sector['sector']);
 			}
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $s_len * 2352, $this->get_track_time (true) * 2352);

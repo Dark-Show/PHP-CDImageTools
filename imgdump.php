@@ -16,8 +16,7 @@ function cli_process_argv ($argv) {
 	echo ("CD-ROM Image Dumper v" . VERSION . "\n");
 	if (count ($argv) == 1)
 		cli_display_help ($argv);
-	
-	$remove_version = false;
+
 	$dir_out = "output/";
 	for ($i = 1; $i < count ($argv); $i++) {
 		switch ($argv[$i]) {
@@ -58,9 +57,6 @@ function cli_process_argv ($argv) {
 					$dir_out .= '/';
 				$i++;
 				break;
-			case '-strip_version':
-				$remove_version = true;
-				break;
 			default:
 				cli_display_help ($argv);
 		}
@@ -77,27 +73,31 @@ function cli_process_argv ($argv) {
 			$cdemu->load_bin ($b);
 		}
 	}
-	dump_image ($cdemu, $dir_out, $remove_version);
+	dump_image ($cdemu, $dir_out);
 	$cdemu->eject(); // Eject Disk
 }
 
 // Dump image loaded by cdemu
-function dump_image ($cdemu, $dir_out, $remove_version = false) {
-	//echo ("  Hashing image...\n");
-	//$hash = $cdemu->hash_image ('sha1', 'cli_dump_progress');
-	//print_r ($hash);
-	
+function dump_image ($cdemu, $dir_out) {
+	echo ("  Hashing image...\n");
+	$hash = $cdemu->hash_image ('sha1', 'cli_dump_progress');
+	foreach ($hash as $algo => $res)
+		echo ("    $algo: $res\n");
+	echo ("\n");
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) {
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
 		echo ("  Track $t\n");
 		if (!$cdemu->set_track ($track))
 			die ("Error: Unexpected end of image!\n");
-		if ($cdemu->get_track_type() == 0) // Audio
-			$cdemu->save_track ($dir_out . "Track $t.cdda", false, false, 'cli_dump_progress');
-		else { // Data
+		if ($cdemu->get_track_type() == 0) { // Audio
+			$hash = $cdemu->save_track ($dir_out . "Track $t.cdda", false, 'sha1', 'cli_dump_progress');
+			foreach ($hash as $algo => $res)
+				echo ("      $algo: $res\n");
+			echo ("\n");
+		} else { // Data
 			if (!is_dir ($dir_out . "Track $t"))
 				mkdir ($dir_out . "Track $t", 0777, true);
-			dump_data ($cdemu, $dir_out . "Track $t/", "../../Track %%T.cdda", $remove_version);
+			dump_data ($cdemu, $dir_out . "Track $t/", "../../Track %%T.cdda", true);
 		}
 	}
 	// TODO: Create media descriptor file
@@ -134,7 +134,12 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 			}
 			$f = $remove_version ? $iso9660->format_filename ($c) : $c; // Remove version from filename
 			$symdepth = ($cdda_symlink !== false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
-			$iso9660->save_file ($c, $dir_out . "contents" . $f, ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), false, 'cli_dump_progress');
+			$hash = $iso9660->save_file ($c, $dir_out . "contents" . $f, ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), 'sha1', 'cli_dump_progress');
+			if (is_array ($hash)) {
+				foreach ($hash as $algo => $res)
+					echo ("      $algo: $res\n");
+				echo ("\n");
+			}
 		}
 		
 		// Dump any unaccessed sectors within the data track
@@ -195,8 +200,7 @@ function cli_display_help ($argv) {
 	echo ("    -cue \"FILE.CUE\"    Input CUE file\n");
 	echo ("    -iso \"FILE.ISO\"    Input ISO file\n");
 	echo ("    -bin \"FILE.BIN\"    Input BIN file\n");
-	echo ("    -output \"PATH/\"    Output directory\n");
-	echo ("    -strip_version     Remove file version from filename\n\n");
+	echo ("    -output \"PATH/\"    Output directory\n\n");
 	echo ("  Example Usages:\n");
 	echo ("    " . $argv[0] . " -cue \"input.cue\" -output \"output/\"\n");
 	echo ("    " . $argv[0] . " -iso \"input.iso\" -output \"output/\" -strip_version\n");
