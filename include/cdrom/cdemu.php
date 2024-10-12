@@ -182,7 +182,7 @@ class CDEMU {
 	}
 	
 	// Public read function
-	public function &read ($seek = false) {
+	public function &read ($seek = false, $limit_processing = false) {
 		$fail = false;
 		if ($seek !== false and $seek != $this->sector and !$this->seek ($seek))
 			return ($fail); // Seek failed
@@ -223,11 +223,14 @@ class CDEMU {
 			for ($i = $this->sector; $i < ($this->sector + 10); $i++) { // Load 10 sectors into buffer
 				if ($i > $this->CD['sector_count'] or feof ($this->fh)) // if not end of disk/file (multifile)
 					continue;
-				$data = fread ($this->fh, $sector_size);
-				if ($this->CD['track'][$this->track]['format'] == 0 or $this->CD['track'][$this->track]['format'] == 1)
-					$this->buffer[$i] = $this->read_bin_sector ($data); // Read and process bin/cue type sector
-				else if ($this->CD['track'][$this->track]['format'] == 2)
-					$this->buffer[$i] = $this->read_iso_sector ($data, $i); // Read and process iso type sector
+				$data = fread ($this->fh, $sector_size); // Read sector
+				if ($this->CD['track'][$this->track]['format'] == 0 or $this->CD['track'][$this->track]['format'] == 1) {
+					if ($limit_processing)
+						$this->buffer[$i] = array ('sector' => $data); // Forward raw bin/cue type sector
+					else
+						$this->buffer[$i] = $this->read_bin_sector ($data); // Process bin/cue type sector
+				} else if ($this->CD['track'][$this->track]['format'] == 2)
+					$this->buffer[$i] = $this->read_iso_sector ($data, $i); // Process iso type sector
 			}
 		}
 		
@@ -545,8 +548,8 @@ class CDEMU {
 		
 		$s_len = $this->CD['sector_count'];
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
-			$sector = $this->read();
-			if (!isset ($sector['data']))
+			$sector = $this->read (false, true);
+			if (!isset ($sector['sector']))
 				return (false); // Data read error
 			if ($hash_algos !== false) {
 				foreach ($hashes as $hash)
@@ -616,7 +619,7 @@ class CDEMU {
 			
 		$s_len = $this->get_track_length (true);
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
-			$sector = $this->read();
+			$sector = $this->read (false, $file === false);
 			if (!isset ($sector['sector']))
 				return (false); // Data read error
 			if ($file !== false and fwrite ($fp, $sector['sector']) === false)
