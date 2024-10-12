@@ -110,6 +110,7 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $remove_version = f
 		echo ("    $algo: $res\n");
 	echo ("\n");
 	
+	$cdemu->clear_sector_access_list();
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
 	if ($iso9660->init()) { // Process ISO9660 filesystem

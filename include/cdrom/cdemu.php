@@ -699,6 +699,11 @@ class CDEMU {
 		return ($this->sect_list);
 	}
 	
+	// Clear accessed sector list
+	public function clear_sector_access_list() {	
+		$this->sect_list = array();
+	}
+	
 	// Current sector
 	public function get_sector() { 
 		return ($this->sector);
