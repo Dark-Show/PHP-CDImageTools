@@ -23,20 +23,6 @@ class ISO9660 {
 	private $iso_pt = array(); // Path Table
 	private $iso_dr = array(); // Directory Records
 	private $iso_ext = array(); // Extension List
-	private $iso_a_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
-	                             'H', 'I', 'J', 'K', 'L', 'M', 'N',
-	                             'O', 'P', 'Q', 'R', 'S', 'T', 'U',
-	                             'V', 'W', 'X', 'Y', 'Z', '0', '1',
-	                             '2', '3', '4', '5', '6', '7', '8',
-	                             '9', '_', '!', '"', '%', '&', "'",
-	                             '(', ')', '*', '+', ',', '-', '.',
-	                             '/', ':', ';', '<', '=', '>', '?');
-	private $iso_d_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
-	                             'H', 'I', 'J', 'K', 'L', 'M', 'N',
-	                             'O', 'P', 'Q', 'R', 'S', 'T', 'U',
-	                             'V', 'W', 'X', 'Y', 'Z', '0', '1',
-	                             '2', '3', '4', '5', '6', '7', '8',
-	                             '9', '_');
 	
 	// Sets CDEMU object
 	public function set_cdemu ($cdemu) {
@@ -164,6 +150,43 @@ class ISO9660 {
 			}
 		}
 		return ($fl);
+	}
+	
+	// Check if string consists of only ASCII a characters
+	// Note: Fails if padding is included
+	public function is_a_char ($string) {
+		$iso_a_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
+	                         'H', 'I', 'J', 'K', 'L', 'M', 'N',
+	                         'O', 'P', 'Q', 'R', 'S', 'T', 'U',
+	                         'V', 'W', 'X', 'Y', 'Z', '0', '1',
+	                         '2', '3', '4', '5', '6', '7', '8',
+	                         '9', '_', '!', '"', '%', '&', "'",
+	                         '(', ')', '*', '+', ',', '-', '.',
+	                         '/', ':', ';', '<', '=', '>', '?');
+		foreach (str_split ($string) as $l) {
+			foreach ($iso_a_char as $c) {
+				if ($l != $c)
+					return (false);
+			}
+		}
+		return (true);
+	}
+	// Check if string consists of ASCII d characters
+	// Note: Fails if padding is included
+	public function is_d_char ($string) {
+		$iso_d_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
+	                         'H', 'I', 'J', 'K', 'L', 'M', 'N',
+	                         'O', 'P', 'Q', 'R', 'S', 'T', 'U',
+	                         'V', 'W', 'X', 'Y', 'Z', '0', '1',
+	                         '2', '3', '4', '5', '6', '7', '8',
+	                         '9', '_');
+		foreach (str_split ($string) as $l) {
+			foreach ($iso_d_char as $c) {
+				if ($l != $c)
+					return (false);
+			}
+		}
+		return (true);
 	}
 	
 	// Remove version information from filename
