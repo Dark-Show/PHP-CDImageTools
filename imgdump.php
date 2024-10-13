@@ -80,34 +80,47 @@ function cli_process_argv ($argv) {
 // Dump image loaded by cdemu
 function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 	$hash = $cdemu->hash_image ($hash_algos, 'cli_dump_progress');
+	$mdr = array ('hash' => $hash, 'track' => array()); // Media descriptor
 	if (is_array ($hash)) {
 		foreach ($hash as $algo => $res)
 			echo ("  $algo: $res\n");
 		echo ("\n");
 	}
+	
+	// Dump each track
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) {
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
+		$mdr['track'][$track] = array();
 		echo ("  Track $t\n");
 		if (!$cdemu->set_track ($track))
 			die ("Error: Unexpected end of image!\n");
-		if ($cdemu->get_track_type() == 0) { // Audio
-			$hash = $cdemu->save_track ($dir_out . "Track $t.cdda", false, $hash_algos, 'cli_dump_progress');
-			if (is_array ($hash)) {
-				foreach ($hash as $algo => $res)
-					echo ("    $algo: $res\n");
-				echo ("\n");
-			}
-		} else { // Data
+		if ($cdemu->get_track_type() == 0) // Audio
+			$mdr['track'][$track] = dump_audio ($cdemu, $dir_out . "Track $t.cdda", $hash_algos);
+		else { // Data
 			if (!is_dir ($dir_out . "Track $t"))
 				mkdir ($dir_out . "Track $t", 0777, true);
-			dump_data ($cdemu, $dir_out . "Track $t/", "../../Track %%T.cdda", $hash_algos);
+			$mdr['track'][$track] = dump_data ($cdemu, $dir_out . "Track $t/", "../../Track %%T.cdda", $hash_algos);
 		}
 	}
+	//print_r ($mdr);
 	// TODO: Create media descriptor file
+}
+
+function dump_audio ($cdemu, $file, $hash_algos) {
+	$tdr = array();
+	$hash = $cdemu->save_track ($file, false, $hash_algos, 'cli_dump_progress');
+	$tdr = array ('file' => "Track $t.cdda", 'format' => 'cdda', 'hash' => $hash, 'cdda' => true); // Track descriptor
+	if (is_array ($hash)) {
+		foreach ($hash as $algo => $res)
+			echo ("    $algo: $res\n");
+		echo ("\n");
+	}
+	return ($tdr);
 }
 
 // Dump data track to $dir_out
 function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $hash_algos = false) {
+	$tdr = array(); // Track descriptor
 	$hash = $cdemu->hash_track ($hash_algos, $cdemu->get_track(), 'cli_dump_progress');
 	if (is_array ($hash)) {
 		foreach ($hash as $algo => $res)
