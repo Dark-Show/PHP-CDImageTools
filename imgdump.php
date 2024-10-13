@@ -82,7 +82,7 @@ function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 	$hash = $cdemu->hash_image ($hash_algos, 'cli_dump_progress');
 	if (is_array ($hash)) {
 		foreach ($hash as $algo => $res)
-			echo ("    $algo: $res\n");
+			echo ("  $algo: $res\n");
 		echo ("\n");
 	}
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) {
@@ -127,7 +127,7 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $hash_algos = false
 		$desc['iso9660']['path_table'] = desc_path_table ($iso9660->get_path_table());
 		
 		echo ("    System Area\n");
-		if (($sa = $iso9660->get_system_area()) !== str_repeat ("\x00", strlen ($sa))) { // Check if system area is used
+		if (($sa = $iso9660->get_system_area()) != str_repeat ("\x00", strlen ($sa))) { // Check if system area is used
 			$desc['iso9660']['system_area'] = true;
 			$hash = $iso9660->save_system_area ($dir_out . "System Area.bin", $hash_algos);
 			if (is_array ($hash)) {

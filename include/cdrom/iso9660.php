@@ -7,6 +7,7 @@
 //////////////////////////////////////
 // Supported Functionality
 //   + System area
+//     + Hashing
 //   + Directory listing
 //     + Metadata
 //   + File retrieval
@@ -310,13 +311,13 @@ class ISO9660 {
 			$out = substr ($out, 0, $file_length - strlen ($out));
 		$length += strlen ($out);
 		
+		if ($h_riff)
+			$out = "RIFF" . pack ('V', $file_length + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $file_length) . $out;
+		
 		if ($hash_algos !== false) {
 			foreach ($hash_algos as $algo)
 				hash_update ($hashes[$algo], $out);
 		}
-		
-		if ($h_riff)
-			$out = "RIFF" . pack ('V', $file_length + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $file_length) . $out;
 		
 		if ($file_out !== false) {
 			$dt = \DateTime::createFromFormat ($file['recording_date']['string_format'], $file['recording_date']['string']);
