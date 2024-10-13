@@ -544,7 +544,7 @@ class CDEMU {
 			$hashes[$algo] = hash_init ($algo); // Init hash
 		
 		if (!$this->set_track (1))
-			return (false); // Track chance error (Image ended)
+			return (false); // Track change error (Image ended)
 		
 		$s_len = $this->CD['sector_count'];
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
@@ -669,7 +669,7 @@ class CDEMU {
 		}
 		
 		if ($track !== false and !$this->set_track ($track))
-			return (false); // Track chance error (Image ended)
+			return (false); // Track change error (Image ended)
 		
 		if ($file !== false and ($fp = fopen ($file, 'w')) === false)
 			return (false); // File error: could not open file for writing

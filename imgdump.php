@@ -145,7 +145,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 		echo ("    System Area\n");
 		if (($sa = $iso9660->get_system_area()) != str_repeat ("\x00", strlen ($sa))) { // Check if system area is used
 			$hash = $iso9660->save_system_area ($dir_out . $track_dir . 'System Area.bin', $hash_algos);
-			$tdr['iso9660']['system_area'] = array ('file' => 'System Area.bin', 'hash' => $hash);
+			$tdr['iso9660']['system_area'] = array ('hash' => $hash, 'file' => $track_dir . 'System Area.bin');
 			if (is_array ($hash)) {
 				foreach ($hash as $algo => $res)
 					echo ("      $algo: $res\n");
@@ -159,12 +159,13 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 		$contents = $iso9660->get_content ('/', true, true); // List root recursively
 		foreach ($contents as $c => $meta) { // Save contents to disk
 			echo ("    $c\n");
-			if (substr ($c, -1, 1) == '/') { // Directory check
+			if (substr ($c, -1, 1) == '/') { // Directory
 				if (!is_dir ($dir_out . $track_dir . "contents" . $c))
 					mkdir ($dir_out . $track_dir . "contents" . $c, 0777, true);
+				$tdr['iso9660']['content'][$c] = array ('file' => $track_dir . 'contents' . $c, 'metadata' => desc_directory_record ($meta));
 				continue;
 			}
-			
+			 // File
 			$symdepth = ($cdda_symlink !== false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
 			$hash = $iso9660->save_file ($c, $dir_out . $track_dir . "contents" . $iso9660->format_filename ($c), ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), $hash_algos, 'cli_dump_progress');
 			$tdr['iso9660']['content'][$c] = array ('hash' => $hash, 'file' => $track_dir . "contents" . $iso9660->format_filename ($c), 'metadata' => desc_directory_record ($meta));
@@ -192,6 +193,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 		foreach ($sectors as $sector => $length) {
 			echo ("    LBA: $sector\n");
 			$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');
+			$tdr['LBA'] = array ($sector => array ('hash' => $hash, 'file' => $track_dir . "LBA$sector.bin"));
 			if (is_array ($hash)) {
 				foreach ($hash as $algo => $res)
 					echo ("      $algo: $res\n");
