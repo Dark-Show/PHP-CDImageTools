@@ -155,7 +155,7 @@ class ISO9660 {
 	// Check if string consists of only ASCII a characters
 	// Note: Fails if padding is included
 	public function is_a_char ($string) {
-		$iso_a_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
+	    $iso_a_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
 	                         'H', 'I', 'J', 'K', 'L', 'M', 'N',
 	                         'O', 'P', 'Q', 'R', 'S', 'T', 'U',
 	                         'V', 'W', 'X', 'Y', 'Z', '0', '1',
@@ -174,7 +174,7 @@ class ISO9660 {
 	// Check if string consists of ASCII d characters
 	// Note: Fails if padding is included
 	public function is_d_char ($string) {
-		$iso_d_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
+	    $iso_d_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
 	                         'H', 'I', 'J', 'K', 'L', 'M', 'N',
 	                         'O', 'P', 'Q', 'R', 'S', 'T', 'U',
 	                         'V', 'W', 'X', 'Y', 'Z', '0', '1',

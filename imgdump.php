@@ -159,58 +159,30 @@ function dump_data ($cdemu, $dir_out, $cdda_symlink = false, $hash_algos = false
 			}
 		}
 		
-		// Verify hash algos
-		if ($hash_algos !== false) {
-			if (is_string ($hash_algos))
-				$hash_algos = array ($hash_algos);
-			foreach ($hash_algos as $algo) { // Verify hash format support
-				foreach (hash_algos() as $sup_algo) {
-					if ($sup_algo == $algo)
-						continue 2;
-				}
-				return (false); // Error: Hash not found
-			}
-			$hashes = array();
-			foreach ($hash_algos as $algo)
-				$hashes[$algo] = hash_init ($algo); // Init hash
-		}
-		
 		// Dump any unaccessed sectors within the data track
 		$access = $cdemu->get_sector_access_list();
 		$t_start = $cdemu->get_track_start (true);
 		$t_end = $t_start + $cdemu->get_track_length (true);
-		$fd = 0;
+		$sectors = array();
+		$gap = false;
 		for ($i = $t_start; $i <= $t_end; $i++) {
-			if (!isset ($access[$i])) {
-				if (!is_resource ($fd)) {
-					$lba = str_pad ($i, strlen ($t_end), '0', STR_PAD_LEFT);
-					echo ("    LBA: $lba\n");
-					$fd = fopen ($dir_out . "LBA$lba.bin", "w");
-					$data = $cdemu->read ($i);
-					fputs ($fd, $data['sector']);
-					if ($hash_algos !== false) {
-						foreach ($hashes as $hash)
-							hash_update ($hash, $data['sector']);
-					}
-				} else {
-					$data = $cdemu->read();
-					fputs ($fd, $data['sector']);
-					if ($hash_algos !== false) {
-						foreach ($hashes as $hash)
-							hash_update ($hash, $data['sector']);
-					}
-				}
-			} else if (is_resource ($fd)) {
-				fclose ($fd);
-				if ($hash_algos !== false) {
-					foreach ($hashes as $algo => $hash)
-						$hashes[$algo] = hash_final ($hash, false);
-					foreach ($hashes as $algo => $res)
-						echo ("      $algo: $res\n");
-					echo ("\n");
-				}
+			if ($gap === false and !isset ($access[$i]))
+				$sectors[($gap = $i)] = 1;
+			else if ($gap !== false and !isset ($access[$i]))
+				$sectors[$gap]++;
+			else
+				$gap = false;
+		}
+		foreach ($sectors as $sector => $length) {
+			echo ("    LBA: $sector\n");
+			$hash = $cdemu->save_sector ($dir_out . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');
+			if (is_array ($hash)) {
+				foreach ($hash as $algo => $res)
+					echo ("      $algo: $res\n");
+				echo ("\n");
 			}
 		}
+		
 		// TODO: Create iso9660 filesystem descriptor file ($dir_out . "filesystem.desc")
 	}
 	// TODO: Dump binary data if not ISO9660

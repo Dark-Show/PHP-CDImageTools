@@ -582,6 +582,63 @@ class CDEMU {
 		return ($t);
 	}
 	
+	// Hash sector data using $hash_algos
+	// Note: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
+	public function hash_sector ($hash_algos, $sector, $length = 1, $cb_progress = false) {
+		return ($this->save_sector (false, $sector, $length, $hash_algos, $cb_progress));
+	}
+	
+	// Save sectors to $file
+	// Note: $length is in sectors, not filesize
+	public function save_sector ($file, $sector, $length = 1, $hash_algos = false, $cb_progress = false) {
+		if ($file === false and $hash_algos === false) // Nothing to do
+			return (false);
+		if (!is_callable ($cb_progress))
+			$cb_progress = false;
+		
+		if ($hash_algos !== false) {
+			if (is_string ($hash_algos))
+				$hash_algos = array ($hash_algos);
+			foreach ($hash_algos as $algo) { // Verify hash format support
+				foreach (hash_algos() as $sup_algo) {
+					if ($sup_algo == $algo)
+						continue 2;
+				}
+				return (false); // Error: Hash not found
+			}
+			$hashes = array();
+			foreach ($hash_algos as $algo)
+				$hashes[$algo] = hash_init ($algo); // Init hash
+		}
+		if ($file !== false and ($fp = fopen ($file, 'w')) === false)
+			return (false); // File error: could not open file for writing
+			
+		if ($sector > $this->get_length (true))
+			return (false);
+		
+		for ($pos = 0; $pos < $length; $pos++) {
+			$data = $this->read ($sector + $pos, true);
+			if (!isset ($data['sector']))
+				return (false); // Data read error
+			if ($file !== false and fwrite ($fp, $data['sector']) === false)
+				return (false); // File error: out of space
+			if ($hash_algos !== false) {
+				foreach ($hashes as $hash)
+					hash_update ($hash, $data['sector']);
+			}
+			if ($cb_progress !== false)
+				call_user_func ($cb_progress, $length, $pos + 1);
+		}
+		if ($file !== false)
+			fclose ($fp);
+		if ($hash_algos !== false) {
+			foreach ($hashes as $algo => $hash)
+				$hashes[$algo] = hash_final ($hash, false);
+			return ($hashes);
+		}
+		return (true);	
+	}
+	
 	// Hash track data using $hash_algos
 	// Note: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
 	public function hash_track ($hash_algos, $track = false, $cb_progress = false) {
@@ -619,7 +676,7 @@ class CDEMU {
 			
 		$s_len = $this->get_track_length (true);
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
-			$sector = $this->read (false, $file === false);
+			$sector = $this->read (false, true);
 			if (!isset ($sector['sector']))
 				return (false); // Data read error
 			if ($file !== false and fwrite ($fp, $sector['sector']) === false)
@@ -684,7 +741,9 @@ class CDEMU {
 	}
 	
 	// CD length
-	public function get_length() {
+	public function get_length ($sector = false) {
+		if ($sector)
+			return ($this->CD['sector_count']);
 		return ($this->lba2msf ($this->CD['sector_count']));
 	}
 	
