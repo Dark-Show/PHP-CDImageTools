@@ -10,6 +10,7 @@
 //   + Directory listing
 //     + Metadata
 //   + File retrieval
+//     + Hashing
 //   + Extensions:
 //     + XA
 //////////////////////////////////////
@@ -72,23 +73,53 @@ class ISO9660 {
 	}
 	
 	// Returns System Area (Sectors 0 - 15)
-	public function &get_system_area() {
-		$fail = false;
-		$system_area = '';
-		for ($i = 0; $i < 16; $i++) {
-			if (($data = $this->o_cdemu->read ($i)) === false)
-				return ($fail);
-			$system_area .= $data['data'];
-		}
-		return ($system_area);
+	public function get_system_area() {
+		return ($this->save_system_area (false, false));
+	}
+	
+	// Hashes System Area
+	public function hash_system_area ($hash_algos) {
+		return ($this->save_system_area (false, $hash_algos));
 	}
 	
 	// Save System Area to $file
-	public function save_system_area ($file) {
-		if (($sa = $this->get_system_area()) === false)
+	public function save_system_area ($file, $hash_algos = false) {
+		if ($hash_algos !== false) {
+			if (is_string ($hash_algos))
+				$hash_algos = array ($hash_algos);
+			foreach ($hash_algos as $algo) { // Verify hash format support
+				foreach (hash_algos() as $sup_algo) {
+					if ($sup_algo == $algo)
+						continue 2;
+				}
+				return (false); // Error: Hash not found
+			}
+			$hashes = array();
+			foreach ($hash_algos as $algo)
+				$hashes[$algo] = hash_init ($algo); // Init hash
+		}
+		
+		$system_area = '';
+		for ($i = 0; $i < 16; $i++) {
+			$data = $this->o_cdemu->read ($i);
+			if (!isset ($data['data']))
+				return (false);
+			$system_area .= $data['data'];
+			if ($hash_algos !== false) {
+				foreach ($hashes as $hash)
+					hash_update ($hash, $data['data']);
+			}
+		}
+		
+		if ($file !== false and file_put_contents ($file, $system_area) === false)
 			return (false);
-		if (file_put_contents ($file, $sa) === false)
-			return (false);
+		if ($hash_algos !== false) {
+			foreach ($hashes as $algo => $hash)
+				$hashes[$algo] = hash_final ($hash, false);
+			return ($hashes);
+		}
+		if ($file === false)
+			return ($system_area);
 		return (true);
 	}
 	

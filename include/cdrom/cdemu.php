@@ -281,7 +281,7 @@ class CDEMU {
 		
 		// Data Track Header
 		//   Sync	  - 12b
-		//	 Address  - 3b
+		//   Address  - 3b
 		//   Mode	  - 1b
 		$s['sync'] = substr ($sector, 0, 12);
 		$s['address'] = $this->header2msf (substr ($sector, 12, 3));
@@ -316,7 +316,7 @@ class CDEMU {
 			$xa['file_number'] = ord (substr ($sector, 16, 1)); // File Number
 			$xa['channel_number'] = ord (substr ($sector, 17, 1)); // Channel Number
 
-			//   Submode
+			// Submode
 			$xa['submode'] = array();
 			$xa['submode']['eof'] = (ord (substr ($sector, 18, 1)) >> 7) & 0x01; // End of File
 			$xa['submode']['realtime'] = (ord (substr ($sector, 18, 1)) >> 6) & 0x01; // Real Time
@@ -327,7 +327,7 @@ class CDEMU {
 			$xa['submode']['video'] = (ord (substr ($sector, 18, 1)) >> 1) & 0x01; // Format Video
 			$xa['submode']['eor'] = (ord (substr ($sector, 18, 1)) >> 0) & 0x01; // End of Record
 
-			//   Coding information
+			// Coding information
 			$xa['codeinfo'] = array(); // Format Coding Information
 			if ($xa['submode']['audio']) { // Format Audio
 				$xa['codeinfo']['reserved'] = (ord (substr ($sector, 19, 1)) >> 7) & 0x01; // Reserved
@@ -341,9 +341,9 @@ class CDEMU {
 			$s['xa'] = $xa;
 
 			// XA Form 1:
-			//	 User Data - 2048b
-			//	 EDC	   - 4b
-			//	 ECC	   - 276b
+			//   User Data - 2048b
+			//   EDC	   - 4b
+			//   ECC	   - 276b
 			$m2xa1_edc = $this->edc_compute ($sector, 16, 2056); // XA Subheader + Data
 			if (substr ($sector, 2072, 4) == $m2xa1_edc) { // Mode 2 XA Form 1 EDC Test
 				$s['data'] = substr ($sector, 24, 2048); // 2048b
@@ -355,8 +355,8 @@ class CDEMU {
 			}
 
 			// XA Form 2:
-			//	 User Data - 2324b
-			//	 EDC	   - 4b
+			//   User Data - 2324b
+			//   EDC	   - 4b
 			$m2xa2_edc = $this->edc_compute ($sector, 16, 2332); // XA Subheader + Data
 			if (substr ($sector, 2348, 4) == $m2xa2_edc) { // Mode 2 XA Form 2 EDC Test
 				$s['data'] = substr ($sector, 24, 2324); // 2324b
