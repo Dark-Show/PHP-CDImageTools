@@ -175,7 +175,7 @@ class ISO9660 {
 	}
 	
 	// Return version information from filename
-	private function &file_version ($filename) {
+	public function &file_version ($filename) {
 		if (($pos = strpos ($filename, ';')) === false)
 			return (false);
 		$ver = substr ($filename, $pos + 1);
@@ -245,6 +245,7 @@ class ISO9660 {
 		return ($fail); // File not found
 	}
 	
+	// Note: Automatically appends file versions, access all parts in sequence.
 	private function &file_read ($file, $cdda_symlink = false, $file_out = false, $hash_algos = false, $cb_progress = false) {
 		$fail = false;
 		$length = 0;
@@ -321,11 +322,11 @@ class ISO9660 {
 		
 		if ($file_out !== false) {
 			$dt = \DateTime::createFromFormat ($file['recording_date']['string_format'], $file['recording_date']['string']);
-			touch ($file_out, $dt->getTimestamp());
-			// TODO: Check if file has version
-			//       If version == 1, mode 'w' else 'a'
-			// TODO: Describe file size and positions for each version of file
-			$fh = fopen ($file_out, 'w');
+			touch ($file_out, $dt->getTimestamp()); // Set file time
+			$fhm = 'w';
+			if (($fver = $this->file_version ($file['file_id'])) !== false and $fver > 1) // Handle file versions
+				$fhm = 'a';
+			$fh = fopen ($file_out, $fhm);
 			fwrite ($fh, $out);
 			$out = '';
 		}
