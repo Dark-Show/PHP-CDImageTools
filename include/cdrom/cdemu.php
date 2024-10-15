@@ -43,40 +43,51 @@ class CDEMU {
 		if (($path = implode ('/', $path)) == '')
 			$path = './';
 		if (!is_file ($path . $cue_file))
-			return (false);
+			return (CDEMU_RET_ERR_FILE);
 		$this->init(); // Init
-		$cue = file ($path . $cue_file); // Load Cue
+		$cue = file ($path . $cue_file); // Load CUE
 		$disk  = array();
 		$track = array();
-		$file = false;
 		foreach ($cue as $line) { // Process each line
 			$e_line = explode (' ', trim ($line));
 			switch (strtolower ($e_line[0])) {
 				case 'file':
 					$type = strtolower ($e_line[count ($e_line) - 1]); // File type
-					if ($file !== false) // if we already have a file
-						$this->CD['multifile'] = true; // Multifile CD
+					if (isset ($file))
+						$this->CD['multifile'] = true; // Multi-file CUE
 					$file = trim (substr (trim ($line), 5, strlen ($line) - (strlen ($type) + 6))); // Store file from between FILE and TYPE
 					if (($qc = substr ($file, 0, 1)) == '"' or $qc == "'")
 						$file = substr ($file, 1, strlen ($file) - 2);
-					if (is_file ($path . $file) and $type == "binary")
-						$this->CD['sector_count'] += filesize ($path . $file) / self::bin_sector_size; // Use file length to determine sector size
+					if (!file_exists ($path . $file))
+						return (CDEMU_RET_ERR_FILE);
+					if ($type != "binary")
+						return (CDEMU_RET_ERR_CUE);
+					$this->CD['sector_count'] += filesize ($path . $file) / self::bin_sector_size; // Use file length to determine sector size
 					break;
 				case 'track':
-					if (isset ($ntrack) and isset ($track)) { // New track check (Save)
-						$track['index'] = $index; // Save index
-						$disk[$ntrack] = $track;  // Save track
-						unset ($ntrack);
-						$track = array(); // Init new track
-						$index = array(); // Init new track index
+					if (isset ($t_in)) { // New track
+						if (!isset ($index))
+							return (CDEMU_RET_ERR_CUE);
+						$track['index'] = $index;
+						$disk[count ($disk) + 1] = $track; // Save track
+						$track = array();
+						$index = array();
 					}
-					$track['file']   = $file; // Save file
-					$track['format'] = $type; // Save type
-					$ntrack = (int)$e_line[1];   // Store track number
-					$track['mode'] = $e_line[2]; // Save Mode
+					if (!isset ($file) or !isset ($type))
+						return (CDEMU_RET_ERR_CUE);
+					$t_in = true; // Inside track
+					$track['file'] = $file;
+					$track['file_format'] = $type;
+					$track_format = strtolower ($e_line[2]); // Save Mode
+					if ($track_format == 'audio')
+						$track['track_format'] = CDEMU_FORMAT_AUDIO; // Audio
+					else if (substr ($track_format, 0, 4) == 'mode')
+						$track['track_format'] = CDEMU_FORMAT_DATA; // Data
+					else
+						return (CDEMU_RET_ERR_CUE);
 					break;
 				case 'index':
-					$index[(int)$e_line[1]] = $e_line[2];	// Save time into index
+					$index[(int)$e_line[1]] = $e_line[2]; // Save time into index
 					break;
 				case 'pregap':
 					$track['pregap'] = $e_line[1];
@@ -88,33 +99,26 @@ class CDEMU {
 			}
 		}
 		$track['index'] = $index; 
-		$disk[$ntrack] = $track; // Save last track
-		$this->CD['track_count'] = count ($disk); // Save track count
+		$disk[count ($disk) + 1] = $track; // Save track
 		
 		// Process cue into TOC
+		$this->CD['track_count'] = count ($disk); // Save track count
 		$this->CD['track'] = array();
-		for ($i = 1; $i <= count ($disk); $i++) { // Process each track
+		for ($i = 1; $i <= $this->CD['track_count']; $i++) { // Process each track
 			$this->CD['track'][$i] = array(); // init track
-			
-			// Store Format
-			if ($disk[$i]['mode'] == 'AUDIO')
-				$this->CD['track'][$i]['format'] = CDEMU_FORMAT_AUDIO; // Raw Audio
-			else if ($disk[$i]['mode'] == 'MODE1/2352' or $disk[$i]['mode'] == 'MODE2/2352')
-				$this->CD['track'][$i]['format'] = CDEMU_FORMAT_DATA; // Raw Binary
-			else
-				continue;
+			$this->CD['track'][$i]['format'] = $disk[$i]['track_format']; // Track format
 			
 			// Process index into start, length and pregap
-			if ($this->CD['multifile']) { // Multifile
+			if ($this->CD['multifile']) { // Multi-file
 				if ($i == 1)
 					$this->CD['track'][$i]['lba'] = 0; // First track
-				else // The start positions depends on the last start position + last length
-					$this->CD['track'][$i]['lba'] = $this->CD['track'][$i - 1]['lba'] + $this->CD['track'][$i - 1]['length']; // Calculate position from last track
-				$this->CD['track'][$i]['length'] = (filesize ($path . $disk[$i]['file']) / self::bin_sector_size); // File size = length of track
+				else
+					$this->CD['track'][$i]['lba'] = $this->CD['track'][$i - 1]['lba'] + $this->CD['track'][$i - 1]['length']; // Length using last track
+				$this->CD['track'][$i]['length'] = (filesize ($path . $disk[$i]['file']) / self::bin_sector_size); // // Length using filesize
 			} else { // Single File
-				$this->CD['track'][$i]['lba'] = $this->msf2lba($disk[$i]['index'][1]); // Start Sector
-				if (isset ($disk[$i + 1]['index'][1])) // Do we have a track to get the end from
-					$this->CD['track'][$i]['length'] = $this->msf2lba ($disk[$i + 1]['index'][1]) - $this->msf2lba ($disk[$i]['index'][1]); // Length
+				$this->CD['track'][$i]['lba'] = $this->msf2lba ($disk[$i]['index'][1]); // Start Sector
+				if (isset ($disk[$i + 1]['index'][1]))
+					$this->CD['track'][$i]['length'] = $this->msf2lba ($disk[$i + 1]['index'][1]) - $this->msf2lba ($disk[$i]['index'][1]); // Length using next track
 				else
 					$this->CD['track'][$i]['length'] = (filesize ($path . $file) / self::bin_sector_size) - $this->msf2lba ($disk[$i]['index'][1]); // Length using filesize
 			}
@@ -122,7 +126,7 @@ class CDEMU {
 				$this->CD['track'][$i]['pregap'] = $this->msf2lba ($disk[$i]['index'][1]) - $this->msf2lba ($disk[$i]['index'][0]); // Pregap
 			$this->CD['track'][$i]['file'] = $path . $disk[$i]['file']; // File
 		}
-		$this->seek (0); // Seek to CD beginning
+		$this->seek (0);
 		return (true);
 	}
 	
