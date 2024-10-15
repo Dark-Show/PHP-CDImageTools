@@ -46,6 +46,8 @@ class CDEMU {
 			return (CDEMU_RET_ERR_FILE);
 		$this->init(); // Init
 		$cue = file ($path . $cue_file); // Load CUE
+		$multifile = false;
+		$sector_count = 0;
 		$disk  = array();
 		$track = array();
 		foreach ($cue as $line) { // Process each line
@@ -54,7 +56,7 @@ class CDEMU {
 				case 'file':
 					$type = strtolower ($e_line[count ($e_line) - 1]); // File type
 					if (isset ($file))
-						$this->CD['multifile'] = true; // Multi-file CUE
+						$multifile = true;
 					$file = trim (substr (trim ($line), 5, strlen ($line) - (strlen ($type) + 6))); // Store file from between FILE and TYPE
 					if (($qc = substr ($file, 0, 1)) == '"' or $qc == "'")
 						$file = substr ($file, 1, strlen ($file) - 2);
@@ -62,7 +64,7 @@ class CDEMU {
 						return (CDEMU_RET_ERR_FILE);
 					if ($type != "binary")
 						return (CDEMU_RET_ERR_CUE);
-					$this->CD['sector_count'] += filesize ($path . $file) / self::bin_sector_size; // Use file length to determine sector size
+					$sector_count += filesize ($path . $file) / self::bin_sector_size; // Sector count using file length
 					break;
 				case 'track':
 					if (isset ($t_in)) { // New track
@@ -102,7 +104,9 @@ class CDEMU {
 		$disk[count ($disk) + 1] = $track; // Save track
 		
 		// Process cue into TOC
-		$this->CD['track_count'] = count ($disk); // Save track count
+		$this->CD['multifile'] = $multifile;
+		$this->CD['sector_count'] = $sector_count;
+		$this->CD['track_count'] = count ($disk);
 		$this->CD['track'] = array();
 		for ($i = 1; $i <= $this->CD['track_count']; $i++) { // Process each track
 			$this->CD['track'][$i] = array(); // init track
@@ -122,8 +126,8 @@ class CDEMU {
 				else
 					$this->CD['track'][$i]['length'] = (filesize ($path . $file) / self::bin_sector_size) - $this->msf2lba ($disk[$i]['index'][1]); // Length using filesize
 			}
-			if (isset ($disk[$i]['index'][0])) // Do we have a pregap
-				$this->CD['track'][$i]['pregap'] = $this->msf2lba ($disk[$i]['index'][1]) - $this->msf2lba ($disk[$i]['index'][0]); // Pregap
+			//if (isset ($disk[$i]['index'][0])) // Do we have a pregap
+			//	$this->CD['track'][$i]['pregap'] = $this->msf2lba ($disk[$i]['index'][1]) - $this->msf2lba ($disk[$i]['index'][0]); // Pregap
 			$this->CD['track'][$i]['file'] = $path . $disk[$i]['file']; // File
 		}
 		$this->seek (0);
@@ -133,8 +137,8 @@ class CDEMU {
 	// Load BIN file
 	public function load_bin ($file, $audio = false) {
 		// TODO: Auto detect if audio track
-		if (!is_file ($file))
-			return (false);
+		if (!file_exists ($file))
+			return (CDEMU_RET_ERR_FILE);
 		if (!is_array ($this->CD) or !is_array ($this->CD['track'])) {
 			$this->init();
 			$this->CD['track'] = array();
