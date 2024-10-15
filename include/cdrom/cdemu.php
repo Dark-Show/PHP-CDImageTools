@@ -42,15 +42,13 @@ class CDEMU {
 		$path[count ($path) - 1] = '';
 		if (($path = implode ('/', $path)) == '')
 			$path = './';
-		if (!is_file ($path . $cue_file))
+		if (!file_exists ($path . $cue_file))
 			return (CDEMU_RET_ERR_FILE);
-		$this->init(); // Init
 		$cue = file ($path . $cue_file); // Load CUE
-		$multifile = false;
 		$sector_count = 0;
-		$disk  = array();
+		$disk = array();
 		$track = array();
-		foreach ($cue as $line) { // Process each line
+		foreach ($cue as $line) { // Process CUE into array
 			$e_line = explode (' ', trim ($line));
 			switch (strtolower ($e_line[0])) {
 				case 'file':
@@ -62,6 +60,7 @@ class CDEMU {
 						$file = substr ($file, 1, strlen ($file) - 2);
 					if (!file_exists ($path . $file))
 						return (CDEMU_RET_ERR_FILE);
+					// TODO: Search for possible files
 					if ($type != "binary")
 						return (CDEMU_RET_ERR_CUE);
 					$sector_count += filesize ($path . $file) / self::bin_sector_size; // Sector count using file length
@@ -103,16 +102,14 @@ class CDEMU {
 		$track['index'] = $index; 
 		$disk[count ($disk) + 1] = $track; // Save track
 		
-		// Process cue into TOC
-		$this->CD['multifile'] = $multifile;
+		$this->init(); // Init
+		$this->CD['multifile'] = isset ($multifile);
 		$this->CD['sector_count'] = $sector_count;
 		$this->CD['track_count'] = count ($disk);
 		$this->CD['track'] = array();
 		for ($i = 1; $i <= $this->CD['track_count']; $i++) { // Process each track
 			$this->CD['track'][$i] = array(); // init track
 			$this->CD['track'][$i]['format'] = $disk[$i]['track_format']; // Track format
-			
-			// Process index into start, length and pregap
 			if ($this->CD['multifile']) { // Multi-file
 				if ($i == 1)
 					$this->CD['track'][$i]['lba'] = 0; // First track
@@ -126,7 +123,7 @@ class CDEMU {
 				else
 					$this->CD['track'][$i]['length'] = (filesize ($path . $file) / self::bin_sector_size) - $this->msf2lba ($disk[$i]['index'][1]); // Length using filesize
 			}
-			//if (isset ($disk[$i]['index'][0])) // Do we have a pregap
+			//if (isset ($disk[$i]['index'][0])) // Index 00 check
 			//	$this->CD['track'][$i]['pregap'] = $this->msf2lba ($disk[$i]['index'][1]) - $this->msf2lba ($disk[$i]['index'][0]); // Pregap
 			$this->CD['track'][$i]['file'] = $path . $disk[$i]['file']; // File
 		}
@@ -455,7 +452,7 @@ class CDEMU {
 	// Compute Cross Interleave Reed-Solomon Code
 	// Note: Modifies $sector
 	// Ported From: ECM Tools (Neill Corlett)
-	private function &circ_compute (&$sector, $major_count, $minor_count, $major_mult, $minor_inc, $pos) {
+	private function circ_compute (&$sector, $major_count, $minor_count, $major_mult, $minor_inc, $pos) {
 		$size = $major_count * $minor_count;
 		for ($major = 0; $major < $major_count; $major++) {
 			$index = ($major >> 1) * $major_mult + ($major & 1);
@@ -477,7 +474,6 @@ class CDEMU {
 			$sector[2076 + $pos + $major] = chr ($ecc_a);
 			$sector[2076 + $pos + $major + $major_count] = chr ($ecc_a ^ $ecc_b);
 		}
-		return ($out);
 	}
 	
 	// Header to ATime

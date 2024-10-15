@@ -54,6 +54,11 @@ class ISO9660 {
 		return ($this->iso_pt);
 	}
 	
+	// Returns Directory Records
+	public function get_directory_record() {
+		return ($this->iso_dr);
+	}
+	
 	// Returns iso9660 extension array
 	public function get_extension() {
 		return ($this->iso_ext);
@@ -205,9 +210,8 @@ class ISO9660 {
 		return ($ver);
 	}
 	
-	// Hash file data located at $path using $hash_algos
-	// Note: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
-	public function &hash_file ($path, $hash_algos) {
+	// Returns ISO9660 file array
+	private function &find_file ($path) {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);
 		foreach ($path as $d) {
@@ -218,11 +222,19 @@ class ISO9660 {
 					$files = $file['contents']; // Update files
 					break;
 				} else if (!$file['file_flag']['directory'] and ($file['file_id'] == $d)) // File
-					return ($this->file_read ($file, false, false, $hash_algos, false)); // Read file
+					return ($file);
 			}
 		}
 		$fail = false;
 		return ($fail); // File not found
+	}
+	
+	// Hash file data located at $path using $hash_algos
+	// Note: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
+	public function &hash_file ($path, $hash_algos) {
+		if (($file = $this->find_file ($path)) === false)
+			return ($file);
+		return ($this->file_read ($file, false, false, $hash_algos, false)); // Read file
 	}
 	
 	// Dump file data located at $path to disk file location $path_output, optionally create symbolic links for cdda files
@@ -232,40 +244,16 @@ class ISO9660 {
 	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b'). XA-CDDA files will not be hashed
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
 	public function &save_file ($path, $path_output, $cdda_symlink = false, $hash_algos = false, $cb_progress = false) {
-		$files = $this->iso_dr;
-		$path = explode ('/', $path);
-		$fail = false;
-		foreach ($path as $d) {
-			if ($d == null)
-				continue;
-			foreach ($files as $file) { // Seek Files List
-				if ($file['file_flag']['directory'] and $file['file_id'] == $d) { // Directory
-					$files = $file['contents']; // Update files
-					break;
-				} else if (!$file['file_flag']['directory'] and ($file['file_id'] == $d)) // File
-					return ($this->file_read ($file, $cdda_symlink, $path_output, $hash_algos, $cb_progress)); // Read file
-			}
-		}
-		return ($fail); // File not found
+		if (($file = $this->find_file ($path)) === false)
+			return ($file);
+		return ($this->file_read ($file, $cdda_symlink, $path_output, $hash_algos, $cb_progress)); // Read file
 	}
 	
-	// Return file data located at $path
+	// Returns file data located at $path
 	public function &get_file ($path) {
-		$files = $this->iso_dr;
-		$path = explode ('/', $path);
-		foreach ($path as $d) {
-			if ($d == null)
-				continue;
-			foreach ($files as $file) { // Seek Files List
-				if ($file['file_flag']['directory'] and $file['file_id'] == $d) { // Directory
-					$files = $file['contents']; // Update files
-					break;
-				} else if (!$file['file_flag']['directory'] and ($file['file_id'] == $d)) // File
-					return ($this->file_read ($file)); // Read file
-			}
-		}
-		$fail = false;
-		return ($fail); // File not found
+		if (($file = $this->find_file ($path)) === false)
+			return ($file);
+		return ($this->file_read ($file)); // Read file
 	}
 	
 	// Note: Automatically appends file versions, access all parts in sequence.
