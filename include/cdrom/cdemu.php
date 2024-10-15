@@ -50,6 +50,95 @@ class CDEMU {
 		$track = array();
 		$file = false;
 		foreach ($cue as $line) { // Process each line
+			$e_line = explode (' ', trim ($line));
+			switch (strtolower ($e_line[0])) {
+				case 'file':
+					$type = strtolower ($e_line[count ($e_line) - 1]); // File type
+					if ($file !== false) // if we already have a file
+						$this->CD['multifile'] = true; // Multifile CD
+					$file = trim (substr (trim ($line), 5, strlen ($line) - (strlen ($type) + 6))); // Store file from between FILE and TYPE
+					if (($qc = substr ($file, 0, 1)) == '"' or $qc == "'")
+						$file = substr ($file, 1, strlen ($file) - 2);
+					if (is_file ($path . $file) and $type == "binary")
+						$this->CD['sector_count'] += filesize ($path . $file) / self::bin_sector_size; // Use file length to determine sector size
+					break;
+				case 'track':
+					if (isset ($ntrack) and isset ($track)) { // New track check (Save)
+						$track['index'] = $index; // Save index
+						$disk[$ntrack] = $track;  // Save track
+						unset ($ntrack);
+						$track = array(); // Init new track
+						$index = array(); // Init new track index
+					}
+					$track['file']   = $file; // Save file
+					$track['format'] = $type; // Save type
+					$ntrack = (int)$e_line[1];   // Store track number
+					$track['mode'] = $e_line[2]; // Save Mode
+					break;
+				case 'index':
+					$index[(int)$e_line[1]] = $e_line[2];	// Save time into index
+					break;
+				case 'pregap':
+					$track['pregap'] = $e_line[1];
+					break;
+				case 'postgap':
+					$track['postgap'] = $e_line[1];
+					break;
+				default:
+			}
+		}
+		$track['index'] = $index; 
+		$disk[$ntrack] = $track; // Save last track
+		$this->CD['track_count'] = count ($disk); // Save track count
+		
+		// Process cue into TOC
+		$this->CD['track'] = array();
+		for ($i = 1; $i <= count ($disk); $i++) { // Process each track
+			$this->CD['track'][$i] = array(); // init track
+			
+			// Store Format
+			if ($disk[$i]['mode'] == 'AUDIO')
+				$this->CD['track'][$i]['format'] = CDEMU_FORMAT_AUDIO; // Raw Audio
+			else if ($disk[$i]['mode'] == 'MODE1/2352' or $disk[$i]['mode'] == 'MODE2/2352')
+				$this->CD['track'][$i]['format'] = CDEMU_FORMAT_DATA; // Raw Binary
+			else
+				continue;
+			
+			// Process index into start, length and pregap
+			if ($this->CD['multifile']) { // Multifile
+				if ($i == 1)
+					$this->CD['track'][$i]['lba'] = 0; // First track
+				else // The start positions depends on the last start position + last length
+					$this->CD['track'][$i]['lba'] = $this->CD['track'][$i - 1]['lba'] + $this->CD['track'][$i - 1]['length']; // Calculate position from last track
+				$this->CD['track'][$i]['length'] = (filesize ($path . $disk[$i]['file']) / self::bin_sector_size); // File size = length of track
+			} else { // Single File
+				$this->CD['track'][$i]['lba'] = $this->msf2lba($disk[$i]['index'][1]); // Start Sector
+				if (isset ($disk[$i + 1]['index'][1])) // Do we have a track to get the end from
+					$this->CD['track'][$i]['length'] = $this->msf2lba ($disk[$i + 1]['index'][1]) - $this->msf2lba ($disk[$i]['index'][1]); // Length
+				else
+					$this->CD['track'][$i]['length'] = (filesize ($path . $file) / self::bin_sector_size) - $this->msf2lba ($disk[$i]['index'][1]); // Length using filesize
+			}
+			if (isset ($disk[$i]['index'][0])) // Do we have a pregap
+				$this->CD['track'][$i]['pregap'] = $this->msf2lba ($disk[$i]['index'][1]) - $this->msf2lba ($disk[$i]['index'][0]); // Pregap
+			$this->CD['track'][$i]['file'] = $path . $disk[$i]['file']; // File
+		}
+		$this->seek (0); // Seek to CD beginning
+		return (true);
+	}
+	
+	public function load_cue_old ($cue_file) {
+		$path = explode ("/", $cue_file);
+		$path[count ($path) - 1] = '';
+		if (($path = implode ('/', $path)) == '')
+			$path = './';
+		if (!is_file ($path . $cue_file))
+			return (false);
+		$this->init(); // Init
+		$cue = file ($path . $cue_file); // Load Cue
+		$disk  = array();
+		$track = array();
+		$file = false;
+		foreach ($cue as $line) { // Process each line
 			if (strtolower (substr ($line, 0, 4)) == "file") { // Process FILE lines, use for all tracks until next FILE line
 				$type = explode (' ', trim ($line)); // Process
 				$type = $type[count ($type) - 1];	 // Store type
@@ -80,10 +169,10 @@ class CDEMU {
 			} else if (strtolower (substr (trim ($line), 0, 5)) == "index") { // Process INDEX
 				$t = explode (' ', trim($line));
 				$index[(int)$t[1]] = $t[2];	// Save time into index
-			} else if (strtolower (substr (trim ($line), 0, 6)) == "pregap") { // Process Artificial Pregap
+			} else if (strtolower (substr (trim ($line), 0, 6)) == "pregap") { // Process Pregap
 				$t = explode (' ', trim ($line));
 				$track['pregap'] = $t[1];
-			} else if (strtolower (substr (trim ($line), 0, 7)) == "postgap") { // Process Artificial Postgap
+			} else if (strtolower (substr (trim ($line), 0, 7)) == "postgap") { // Process Postgap
 				$t = explode (' ', trim ($line));
 				$track['postgap'] = $t[1];
 			}
@@ -99,9 +188,9 @@ class CDEMU {
 			
 			// Store Format
 			if ($disk[$i]['mode'] == 'AUDIO')
-				$this->CD['track'][$i]['format'] = 0; // Raw Audio
+				$this->CD['track'][$i]['format'] = CDEMU_FORMAT_AUDIO; // Raw Audio
 			else if ($disk[$i]['mode'] == 'MODE1/2352' or $disk[$i]['mode'] == 'MODE2/2352')
-				$this->CD['track'][$i]['format'] = 1; // Raw Binary
+				$this->CD['track'][$i]['format'] = CDEMU_FORMAT_DATA; // Raw Binary
 			else
 				continue;
 			
@@ -146,7 +235,7 @@ class CDEMU {
 		else
 			$this->CD['track'][$this->CD['track_count']]['lba'] = $this->CD['track'][$this->CD['track_count'] - 1]['lba'] + $this->CD['track'][$this->CD['track_count'] - 1]['length'];
 		$this->CD['track'][$this->CD['track_count']]['length'] = filesize ($file) / self::bin_sector_size;
-		$this->CD['track'][$this->CD['track_count']]['format'] = $audio ? 0 : 1;
+		$this->CD['track'][$this->CD['track_count']]['format'] = $audio ? CDEMU_FORMAT_AUDIO : CDEMU_FORMAT_DATA;
 		$this->CD['sector_count'] += $this->CD['track'][$this->CD['track_count']]['length']; // Use filesize to determine sectors
 		return (true);
 	}
@@ -164,7 +253,7 @@ class CDEMU {
 		else
 			$this->CD['track'][$this->CD['track_count']]['lba'] = $this->CD['track'][$this->CD['track_count'] - 1]['lba'] + $this->CD['track'][$this->CD['track_count'] - 1]['length'];
 		$this->CD['track'][$this->CD['track_count']]['length'] = filesize ($file) / self::iso_sector_size;
-		$this->CD['track'][$this->CD['track_count']]['format'] = 2;
+		$this->CD['track'][$this->CD['track_count']]['format'] = CDEMU_FORMAT_ISO;
 		$this->CD['sector_count'] += $this->CD['track'][$this->CD['track_count']]['length'];
 		return (true);
 	}
@@ -188,9 +277,9 @@ class CDEMU {
 			return ($fail); // Seek failed
 		
 		// Choose sector size based on file format
-		if ($this->CD['track'][$this->track]['format'] == 0 or $this->CD['track'][$this->track]['format'] == 1)
+		if ($this->CD['track'][$this->track]['format'] == CDEMU_FORMAT_AUDIO or $this->CD['track'][$this->track]['format'] == CDEMU_FORMAT_DATA)
 			$sector_size = self::bin_sector_size;
-		else if ($this->CD['track'][$this->track]['format'] == 2)
+		else if ($this->CD['track'][$this->track]['format'] == CDEMU_FORMAT_ISO)
 			$sector_size = self::iso_sector_size;
 		
 		if ($this->sector < $this->CD['sector_count']) { // Same track check
@@ -224,12 +313,12 @@ class CDEMU {
 				if ($i > $this->CD['sector_count'] or feof ($this->fh)) // if not end of disk/file (multifile)
 					continue;
 				$data = fread ($this->fh, $sector_size); // Read sector
-				if ($this->CD['track'][$this->track]['format'] == 0 or $this->CD['track'][$this->track]['format'] == 1) {
+				if ($this->CD['track'][$this->track]['format'] == CDEMU_FORMAT_AUDIO or $this->CD['track'][$this->track]['format'] == CDEMU_FORMAT_DATA) {
 					if ($limit_processing)
 						$this->buffer[$i] = array ('sector' => $data); // Forward raw bin/cue type sector
 					else
 						$this->buffer[$i] = $this->read_bin_sector ($data); // Process bin/cue type sector
-				} else if ($this->CD['track'][$this->track]['format'] == 2)
+				} else if ($this->CD['track'][$this->track]['format'] == CDEMU_FORMAT_ISO)
 					$this->buffer[$i] = $this->read_iso_sector ($data, $i); // Process iso type sector
 			}
 		}

@@ -6,8 +6,9 @@
 // Author: Greg Michalik
 const VERSION = '0.1';
 
+include ('include/cdrom/cdemu.const.php');
 include ('include/cdrom/cdemu.php');
-include ('include/cdrom/iso9660.php');
+include ('include/cdrom/cdemu.iso9660.php');
 //include ('./include/binary.php'); // DEBUG FUNCTIONS
 
 cli_process_argv ($argv);
@@ -165,7 +166,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 				$tdr['iso9660']['content'][$c] = array ('file' => $track_dir . 'contents' . $c, 'metadata' => desc_directory_record ($meta));
 				continue;
 			}
-			 // File
+			// File
 			$symdepth = ($cdda_symlink !== false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
 			$hash = $iso9660->save_file ($c, $dir_out . $track_dir . "contents" . $iso9660->format_filename ($c), ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), $hash_algos, 'cli_dump_progress');
 			$tdr['iso9660']['content'][$c] = array ('hash' => $hash, 'file' => $track_dir . "contents" . $iso9660->format_filename ($c), 'metadata' => desc_directory_record ($meta));
