@@ -64,7 +64,7 @@ function cli_process_argv ($argv) {
 	}
 	$cdemu = new CDEMU;
 	if (isset ($cue))
-		$cdemu->load_cue ($cue);
+		echo $cdemu->load_cue ($cue);
 	
 	if (isset ($iso))
 		$cdemu->load_iso ($iso);
@@ -168,8 +168,8 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 			}
 			// File
 			$symdepth = ($cdda_symlink !== false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
-			$hash = $iso9660->save_file ($c, $dir_out . $track_dir . "contents" . $iso9660->format_filename ($c), ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), $hash_algos, 'cli_dump_progress');
-			$tdr['iso9660']['content'][$c] = array ('hash' => $hash, 'file' => $track_dir . "contents" . $iso9660->format_filename ($c), 'metadata' => desc_directory_record ($meta));
+			$hash = $iso9660->save_file ($c, $dir_out . $track_dir . "contents" . $iso9660->format_fileid ($c), ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), $hash_algos, 'cli_dump_progress');
+			$tdr['iso9660']['content'][$c] = array ('hash' => $hash, 'file' => $track_dir . "contents" . $iso9660->format_fileid ($c), 'metadata' => desc_directory_record ($meta));
 			if (is_array ($hash)) {
 				foreach ($hash as $algo => $res)
 					echo ("      $algo: $res\n");

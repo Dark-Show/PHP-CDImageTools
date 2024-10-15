@@ -38,12 +38,14 @@ class CDEMU {
   	}
 	
 	public function load_cue ($cue_file) {
+		if (!file_exists ($cue_file))
+			return (CDEMU_RET_ERR_FILE);
 		$path = explode ("/", $cue_file);
+		$cue_file = $path[count ($path) - 1];
 		$path[count ($path) - 1] = '';
 		if (($path = implode ('/', $path)) == '')
 			$path = './';
-		if (!file_exists ($path . $cue_file))
-			return (CDEMU_RET_ERR_FILE);
+		
 		$cue = file ($path . $cue_file); // Load CUE
 		$sector_count = 0;
 		$disk = array();
@@ -58,6 +60,7 @@ class CDEMU {
 					$file = trim (substr (trim ($line), 5, strlen ($line) - (strlen ($type) + 6))); // Store file from between FILE and TYPE
 					if (($qc = substr ($file, 0, 1)) == '"' or $qc == "'")
 						$file = substr ($file, 1, strlen ($file) - 2);
+					
 					if (!file_exists ($path . $file))
 						return (CDEMU_RET_ERR_FILE);
 					// TODO: Search for possible files
@@ -121,7 +124,7 @@ class CDEMU {
 				if (isset ($disk[$i + 1]['index'][1]))
 					$this->CD['track'][$i]['length'] = $this->msf2lba ($disk[$i + 1]['index'][1]) - $this->msf2lba ($disk[$i]['index'][1]); // Length using next track
 				else
-					$this->CD['track'][$i]['length'] = (filesize ($path . $file) / self::bin_sector_size) - $this->msf2lba ($disk[$i]['index'][1]); // Length using filesize
+					$this->CD['track'][$i]['length'] = (filesize ($path . $disk[$i]['file']) / self::bin_sector_size) - $this->msf2lba ($disk[$i]['index'][1]); // Length using filesize
 			}
 			//if (isset ($disk[$i]['index'][0])) // Index 00 check
 			//	$this->CD['track'][$i]['pregap'] = $this->msf2lba ($disk[$i]['index'][1]) - $this->msf2lba ($disk[$i]['index'][0]); // Pregap

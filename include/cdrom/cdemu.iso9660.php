@@ -194,11 +194,11 @@ class ISO9660 {
 		return (true);
 	}
 	
-	// Remove version information from filename
-	public function &format_filename ($filename) {
-		if (($pos = strpos ($filename, ';')) === false)
-			return ($filename);
-		$format = substr ($filename, 0, $pos);
+	// Remove version information from file_id
+	public function &format_fileid ($file_id) {
+		if (($pos = strpos ($file_id, ';')) === false)
+			return ($file_id);
+		$format = substr ($file_id, 0, $pos);
 		return ($format);
 	}
 	
@@ -208,6 +208,33 @@ class ISO9660 {
 			return (false);
 		$ver = substr ($filename, $pos + 1);
 		return ($ver);
+	}
+	
+	// Hash file data located at $path using $hash_algos
+	// Note: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
+	public function &hash_file ($path, $hash_algos, $cb_progress = false) {
+		if (($file = $this->find_file ($path)) === false)
+			return ($file);
+		return ($this->file_read ($file, false, false, $hash_algos, $cb_progress));
+	}
+	
+	// Dump file data located at $path to disk file location $path_output, optionally create symbolic links for cdda files
+	//   $cdda_symlink: Absolute or relative path to symlink directory. Relativity is from the dumped file $path
+	//                  "/home/user/cdemu/Track %%t.cdda" would turn into "/home/user/cdemu/Track 9.cdda"
+	//                  "/home/user/cdemu/Track %%T.cdda" would turn into "/home/user/cdemu/Track 09.cdda"
+	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b'). XA-CDDA files will not be hashed
+	//   $cb_progress: function cli_progress ($length, $pos) { ... }
+	public function &save_file ($path, $path_output, $cdda_symlink = false, $hash_algos = false, $cb_progress = false) {
+		if (($file = $this->find_file ($path)) === false)
+			return ($file);
+		return ($this->file_read ($file, $cdda_symlink, $path_output, $hash_algos, $cb_progress));
+	}
+	
+	// Returns file data located at $path
+	public function &get_file ($path) {
+		if (($file = $this->find_file ($path)) === false)
+			return ($file);
+		return ($this->file_read ($file));
 	}
 	
 	// Returns ISO9660 file array
@@ -227,33 +254,6 @@ class ISO9660 {
 		}
 		$fail = false;
 		return ($fail); // File not found
-	}
-	
-	// Hash file data located at $path using $hash_algos
-	// Note: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
-	public function &hash_file ($path, $hash_algos) {
-		if (($file = $this->find_file ($path)) === false)
-			return ($file);
-		return ($this->file_read ($file, false, false, $hash_algos, false)); // Read file
-	}
-	
-	// Dump file data located at $path to disk file location $path_output, optionally create symbolic links for cdda files
-	//   $cdda_symlink: Absolute or relative path to symlink directory. Relativity is from the dumped file $path
-	//                  "/home/user/cdemu/Track %%t.cdda" would turn into "/home/user/cdemu/Track 9.cdda"
-	//                  "/home/user/cdemu/Track %%T.cdda" would turn into "/home/user/cdemu/Track 09.cdda"
-	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b'). XA-CDDA files will not be hashed
-	//   $cb_progress: function cli_progress ($length, $pos) { ... }
-	public function &save_file ($path, $path_output, $cdda_symlink = false, $hash_algos = false, $cb_progress = false) {
-		if (($file = $this->find_file ($path)) === false)
-			return ($file);
-		return ($this->file_read ($file, $cdda_symlink, $path_output, $hash_algos, $cb_progress)); // Read file
-	}
-	
-	// Returns file data located at $path
-	public function &get_file ($path) {
-		if (($file = $this->find_file ($path)) === false)
-			return ($file);
-		return ($this->file_read ($file)); // Read file
 	}
 	
 	// Note: Automatically appends file versions, access all parts in sequence.
