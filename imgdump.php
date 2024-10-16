@@ -178,19 +178,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 		}
 		
 		// Dump any unaccessed sectors within the data track
-		$access = $cdemu->get_sector_access_list();
-		$t_start = $cdemu->get_track_start (true);
-		$t_end = $t_start + $cdemu->get_track_length (true);
-		$sectors = array();
-		$gap = false;
-		for ($i = $t_start; $i <= $t_end; $i++) {
-			if ($gap === false and !isset ($access[$i]))
-				$sectors[($gap = $i)] = 1;
-			else if ($gap !== false and !isset ($access[$i]))
-				$sectors[$gap]++;
-			else
-				$gap = false;
-		}
+		$sectors = $cdemu->get_sector_unaccessed_list();
 		foreach ($sectors as $sector => $length) {
 			echo ("    LBA: $sector\n");
 			$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');

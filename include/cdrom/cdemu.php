@@ -122,7 +122,7 @@ class CDEMU {
 					$this->CD['track'][$i]['lba'] = 0; // First track
 				else
 					$this->CD['track'][$i]['lba'] = $this->CD['track'][$i - 1]['lba'] + $this->CD['track'][$i - 1]['length']; // Length using last track
-				$this->CD['track'][$i]['length'] = (filesize ($path . $disk[$i]['file']) / self::bin_sector_size); // // Length using filesize
+				$this->CD['track'][$i]['length'] = (filesize ($path . $disk[$i]['file']) / self::bin_sector_size); // Length using filesize
 			} else { // Single File
 				$this->CD['track'][$i]['lba'] = $this->msf2lba ($disk[$i]['index'][1]); // Start Sector
 				if (isset ($disk[$i + 1]['index'][1]))
@@ -143,11 +143,11 @@ class CDEMU {
 		// TODO: Auto detect if audio track
 		if (!file_exists ($file))
 			return (false);
-		if (!is_array ($this->CD) or !is_array ($this->CD['track'])) {
+		if (!is_array ($this->CD) or !is_array ($this->CD['track'])) { // Init check
 			$this->init();
 			$this->CD['track'] = array();
 		} else {
-			$this->CD['multifile'] = true; // Already init, we are multifile.
+			$this->CD['multifile'] = true; // Set multi-file
 			$this->CD['track_count']++;	// Increment track count
 		}
 		$this->CD['track'][$this->CD['track_count']] = array();
@@ -764,6 +764,24 @@ class CDEMU {
 	public function get_sector_access_list() {
 		ksort ($this->sect_list, SORT_NUMERIC);
 		return ($this->sect_list);
+	}
+	
+	// Returned unaccessed sector areas
+	public function get_sector_unaccessed_list() {
+		$access = $this->get_sector_access_list();
+		$t_start = $this->get_track_start (true);
+		$t_end = $t_start + $this->get_track_length (true);
+		$sectors = array();
+		$gap = false;
+		for ($i = $t_start; $i <= $t_end; $i++) {
+			if ($gap === false and !isset ($access[$i]))
+				$sectors[($gap = $i)] = 1;
+			else if ($gap !== false and !isset ($access[$i]))
+				$sectors[$gap]++;
+			else
+				$gap = false;
+		}
+		return ($sectors);
 	}
 	
 	// Clear accessed sector list
