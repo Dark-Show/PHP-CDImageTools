@@ -64,6 +64,59 @@ class ISO9660 {
 		return ($this->iso_ext);
 	}
 	
+	// Check if string consists of only ASCII a characters
+	// Note: Fails if padding is included
+	public function is_a_char ($string) {
+	    $iso_a_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
+	                         'H', 'I', 'J', 'K', 'L', 'M', 'N',
+	                         'O', 'P', 'Q', 'R', 'S', 'T', 'U',
+	                         'V', 'W', 'X', 'Y', 'Z', '0', '1',
+	                         '2', '3', '4', '5', '6', '7', '8',
+	                         '9', '_', '!', '"', '%', '&', "'",
+	                         '(', ')', '*', '+', ',', '-', '.',
+	                         '/', ':', ';', '<', '=', '>', '?');
+		foreach (str_split ($string) as $l) {
+			foreach ($iso_a_char as $c) {
+				if ($l != $c)
+					return (false);
+			}
+		}
+		return (true);
+	}
+	// Check if string consists of ASCII d characters
+	// Note: Fails if padding is included
+	public function is_d_char ($string) {
+	    $iso_d_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
+	                         'H', 'I', 'J', 'K', 'L', 'M', 'N',
+	                         'O', 'P', 'Q', 'R', 'S', 'T', 'U',
+	                         'V', 'W', 'X', 'Y', 'Z', '0', '1',
+	                         '2', '3', '4', '5', '6', '7', '8',
+	                         '9', '_');
+		foreach (str_split ($string) as $l) {
+			foreach ($iso_d_char as $c) {
+				if ($l != $c)
+					return (false);
+			}
+		}
+		return (true);
+	}
+	
+	// Remove version information from file_id
+	public function &format_fileid ($file_id) {
+		if (($pos = strpos ($file_id, ';')) === false)
+			return ($file_id);
+		$format = substr ($file_id, 0, $pos);
+		return ($format);
+	}
+	
+	// Returns version information from file_id
+	public function &get_fileid_version ($file_id) {
+		if (($pos = strpos ($file_id, ';')) === false)
+			return (false);
+		$ver = substr ($file_id, $pos + 1);
+		return ($ver);
+	}
+	
 	// Returns System Area (Sectors 0 - 15)
 	public function get_system_area() {
 		return ($this->save_system_area (false, false));
@@ -157,59 +210,6 @@ class ISO9660 {
 		return ($fl);
 	}
 	
-	// Check if string consists of only ASCII a characters
-	// Note: Fails if padding is included
-	public function is_a_char ($string) {
-	    $iso_a_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
-	                         'H', 'I', 'J', 'K', 'L', 'M', 'N',
-	                         'O', 'P', 'Q', 'R', 'S', 'T', 'U',
-	                         'V', 'W', 'X', 'Y', 'Z', '0', '1',
-	                         '2', '3', '4', '5', '6', '7', '8',
-	                         '9', '_', '!', '"', '%', '&', "'",
-	                         '(', ')', '*', '+', ',', '-', '.',
-	                         '/', ':', ';', '<', '=', '>', '?');
-		foreach (str_split ($string) as $l) {
-			foreach ($iso_a_char as $c) {
-				if ($l != $c)
-					return (false);
-			}
-		}
-		return (true);
-	}
-	// Check if string consists of ASCII d characters
-	// Note: Fails if padding is included
-	public function is_d_char ($string) {
-	    $iso_d_char = array ('A', 'B', 'C', 'D', 'E', 'F', 'G',
-	                         'H', 'I', 'J', 'K', 'L', 'M', 'N',
-	                         'O', 'P', 'Q', 'R', 'S', 'T', 'U',
-	                         'V', 'W', 'X', 'Y', 'Z', '0', '1',
-	                         '2', '3', '4', '5', '6', '7', '8',
-	                         '9', '_');
-		foreach (str_split ($string) as $l) {
-			foreach ($iso_d_char as $c) {
-				if ($l != $c)
-					return (false);
-			}
-		}
-		return (true);
-	}
-	
-	// Remove version information from file_id
-	public function &format_fileid ($file_id) {
-		if (($pos = strpos ($file_id, ';')) === false)
-			return ($file_id);
-		$format = substr ($file_id, 0, $pos);
-		return ($format);
-	}
-	
-	// Return version information from filename
-	public function &file_version ($filename) {
-		if (($pos = strpos ($filename, ';')) === false)
-			return (false);
-		$ver = substr ($filename, $pos + 1);
-		return ($ver);
-	}
-	
 	// Hash file data located at $path using $hash_algos
 	// Note: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
 	public function &hash_file ($path, $hash_algos, $cb_progress = false) {
@@ -237,7 +237,7 @@ class ISO9660 {
 		return ($this->file_read ($file));
 	}
 	
-	// Returns ISO9660 file array
+	// Returns directory record for file located at $path
 	private function &find_file ($path) {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);
@@ -335,7 +335,7 @@ class ISO9660 {
 			$dt = \DateTime::createFromFormat ($file['recording_date']['string_format'], $file['recording_date']['string']);
 			touch ($file_out, $dt->getTimestamp()); // Set file time
 			$fhm = 'w';
-			if (($fver = $this->file_version ($file['file_id'])) !== false and $fver > 1) // Handle file versions
+			if (($fver = $this->get_fileid_version ($file['file_id'])) !== false and $fver > 1) // Handle file versions
 				$fhm = 'a';
 			$fh = fopen ($file_out, $fhm);
 			fwrite ($fh, $out);

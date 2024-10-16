@@ -37,6 +37,7 @@ class CDEMU {
 		$this->lut_init(); // Init EDC/ECC LUTs
   	}
 	
+	// Load CUE file
 	public function load_cue ($cue_file) {
 		if (!file_exists ($cue_file))
 			return (CDEMU_RET_ERR_FILE);
@@ -55,6 +56,9 @@ class CDEMU {
 			switch (strtolower ($e_line[0])) {
 				case 'file':
 					$type = strtolower ($e_line[count ($e_line) - 1]); // File type
+					if ($type != "binary")
+						return (CDEMU_RET_ERR_CUE);
+					
 					if (isset ($file))
 						$multifile = true;
 					$file = trim (substr (trim ($line), 5, strlen ($line) - (strlen ($type) + 6))); // Store file from between FILE and TYPE
@@ -64,8 +68,6 @@ class CDEMU {
 					if (!file_exists ($path . $file))
 						return (CDEMU_RET_ERR_FILE);
 					// TODO: Search for possible files
-					if ($type != "binary")
-						return (CDEMU_RET_ERR_CUE);
 					$sector_count += filesize ($path . $file) / self::bin_sector_size; // Sector count using file length
 					break;
 				case 'track':
@@ -77,16 +79,16 @@ class CDEMU {
 						$track = array();
 						$index = array();
 					}
-					if (!isset ($file) or !isset ($type))
+					if (!isset ($file))
 						return (CDEMU_RET_ERR_CUE);
 					$t_in = true; // Inside track
 					$track['file'] = $file;
-					$track['file_format'] = $type;
+					$track['file_format'] = CDEMU_FILE_BIN;
 					$track_format = strtolower ($e_line[2]); // Save Mode
 					if ($track_format == 'audio')
-						$track['track_format'] = CDEMU_FORMAT_AUDIO; // Audio
+						$track['track_format'] = CDEMU_TRACK_AUDIO; // Audio
 					else if (substr ($track_format, 0, 4) == 'mode')
-						$track['track_format'] = CDEMU_FORMAT_DATA; // Data
+						$track['track_format'] = CDEMU_TRACK_DATA; // Data
 					else
 						return (CDEMU_RET_ERR_CUE);
 					break;
@@ -112,6 +114,8 @@ class CDEMU {
 		$this->CD['track'] = array();
 		for ($i = 1; $i <= $this->CD['track_count']; $i++) { // Process each track
 			$this->CD['track'][$i] = array(); // init track
+			$this->CD['track'][$i]['file'] = $path . $disk[$i]['file']; // File
+			$this->CD['track'][$i]['file_format'] = CDEMU_FILE_BIN;
 			$this->CD['track'][$i]['format'] = $disk[$i]['track_format']; // Track format
 			if ($this->CD['multifile']) { // Multi-file
 				if ($i == 1)
@@ -128,17 +132,17 @@ class CDEMU {
 			}
 			//if (isset ($disk[$i]['index'][0])) // Index 00 check
 			//	$this->CD['track'][$i]['pregap'] = $this->msf2lba ($disk[$i]['index'][1]) - $this->msf2lba ($disk[$i]['index'][0]); // Pregap
-			$this->CD['track'][$i]['file'] = $path . $disk[$i]['file']; // File
 		}
 		$this->seek (0);
 		return (true);
 	}
 	
 	// Load BIN file
+	// Returns true on success, false if file does not exist
 	public function load_bin ($file, $audio = false) {
 		// TODO: Auto detect if audio track
 		if (!file_exists ($file))
-			return (CDEMU_RET_ERR_FILE);
+			return (false);
 		if (!is_array ($this->CD) or !is_array ($this->CD['track'])) {
 			$this->init();
 			$this->CD['track'] = array();
@@ -148,34 +152,39 @@ class CDEMU {
 		}
 		$this->CD['track'][$this->CD['track_count']] = array();
 		$this->CD['track'][$this->CD['track_count']]['file'] = $file;
+		$this->CD['track'][$this->CD['track_count']]['file_format'] = CDEMU_FILE_BIN;
+		$this->CD['track'][$this->CD['track_count']]['format'] = $audio ? CDEMU_TRACK_AUDIO : CDEMU_TRACK_DATA;
 		if ($this->CD['track_count'] == 1)
 			$this->CD['track'][$this->CD['track_count']]['lba'] = 0; // First track starts at sector 0
 		else
 			$this->CD['track'][$this->CD['track_count']]['lba'] = $this->CD['track'][$this->CD['track_count'] - 1]['lba'] + $this->CD['track'][$this->CD['track_count'] - 1]['length'];
 		$this->CD['track'][$this->CD['track_count']]['length'] = filesize ($file) / self::bin_sector_size;
-		$this->CD['track'][$this->CD['track_count']]['format'] = $audio ? CDEMU_FORMAT_AUDIO : CDEMU_FORMAT_DATA;
 		$this->CD['sector_count'] += $this->CD['track'][$this->CD['track_count']]['length']; // Use filesize to determine sectors
 		return (true);
 	}
 	
 	// Load ISO file
+	// Returns true on success, false if file does not exist
 	public function load_iso ($file) {
-		if (!is_file ($file))
+		if (!file_exists ($file))
 			return (false);
 		$this->init(); // Init
 		$this->CD['track'] = array();
 		$this->CD['track'][$this->CD['track_count']] = array();
 		$this->CD['track'][$this->CD['track_count']]['file'] = $file;
+		$this->CD['track'][$this->CD['track_count']]['file_format'] = CDEMU_FILE_ISO;
+		$this->CD['track'][$this->CD['track_count']]['format'] = CDEMU_TRACK_DATA;
 		if ($this->CD['track_count'] == 1)
 			$this->CD['track'][$this->CD['track_count']]['lba'] = 0; // First track starts at sector 0
 		else
 			$this->CD['track'][$this->CD['track_count']]['lba'] = $this->CD['track'][$this->CD['track_count'] - 1]['lba'] + $this->CD['track'][$this->CD['track_count'] - 1]['length'];
 		$this->CD['track'][$this->CD['track_count']]['length'] = filesize ($file) / self::iso_sector_size;
-		$this->CD['track'][$this->CD['track_count']]['format'] = CDEMU_FORMAT_ISO;
 		$this->CD['sector_count'] += $this->CD['track'][$this->CD['track_count']]['length'];
 		return (true);
 	}
 	
+	// Seeks to position in sector or msf format
+	// Returns true on success, false if end of disk
 	public function seek ($pos) {
 		if (!is_numeric ($pos))
 			$pos = $this->msf2lba ($pos);
@@ -185,19 +194,19 @@ class CDEMU {
 			$this->sector = $pos; // Set current sector
 			return (true);
 		}
-		return (false); // EOF
+		return (false); // EOD
 	}
 	
-	// Public read function
+	// Read currect sector from image, optionally seek and/or limit processing to only return sector data
 	public function &read ($seek = false, $limit_processing = false) {
 		$fail = false;
 		if ($seek !== false and $seek != $this->sector and !$this->seek ($seek))
 			return ($fail); // Seek failed
 		
 		// Choose sector size based on file format
-		if ($this->CD['track'][$this->track]['format'] == CDEMU_FORMAT_AUDIO or $this->CD['track'][$this->track]['format'] == CDEMU_FORMAT_DATA)
+		if ($this->CD['track'][$this->track]['file_format'] == CDEMU_FILE_BIN)
 			$sector_size = self::bin_sector_size;
-		else if ($this->CD['track'][$this->track]['format'] == CDEMU_FORMAT_ISO)
+		else if ($this->CD['track'][$this->track]['file_format'] == CDEMU_FILE_ISO)
 			$sector_size = self::iso_sector_size;
 		
 		if ($this->sector < $this->CD['sector_count']) { // Same track check
@@ -231,12 +240,12 @@ class CDEMU {
 				if ($i > $this->CD['sector_count'] or feof ($this->fh)) // if not end of disk/file (multifile)
 					continue;
 				$data = fread ($this->fh, $sector_size); // Read sector
-				if ($this->CD['track'][$this->track]['format'] == CDEMU_FORMAT_AUDIO or $this->CD['track'][$this->track]['format'] == CDEMU_FORMAT_DATA) {
+				if ($this->CD['track'][$this->track]['file_format'] == CDEMU_FILE_BIN) {
 					if ($limit_processing)
 						$this->buffer[$i] = array ('sector' => $data); // Forward raw bin/cue type sector
 					else
 						$this->buffer[$i] = $this->read_bin_sector ($data); // Process bin/cue type sector
-				} else if ($this->CD['track'][$this->track]['format'] == CDEMU_FORMAT_ISO)
+				} else if ($this->CD['track'][$this->track]['format'] == CDEMU_FILE_ISO)
 					$this->buffer[$i] = $this->read_iso_sector ($data, $i); // Process iso type sector
 			}
 		}
@@ -252,6 +261,7 @@ class CDEMU {
 		return ($fail); // EOF
 	}
 	
+	// Close file and clean-up internal variables
 	public function eject() {
 		if (is_resource ($this->fh))
 			fclose ($this->fh);
@@ -277,11 +287,12 @@ class CDEMU {
 		$this->CD['track'] = 0; // Table of contents
 	}
 	
+	// Parse BIN sector into usable format
 	private function &read_bin_sector (&$sector) {
 		$s = array();
 		$s['sector'] = $sector; // Save raw sector
 		
-		if ((isset ($this->CD['track'][$this->track]['format']) and $this->CD['track'][$this->track]['format'] == 0) or substr ($sector, 0, 12) != "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00") { // Audio check
+		if ((isset ($this->CD['track'][$this->track]['format']) and $this->CD['track'][$this->track]['format'] == CDEMU_TRACK_AUDIO) or substr ($sector, 0, 12) != "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00") { // Audio check
 			$s['data'] = $sector; // 2352b
 			return ($s);
 		}
@@ -389,7 +400,7 @@ class CDEMU {
 		}
 		
 		// Trust header for mode 2 detection
-		if ($s['mode'] == 2) { // Mode 2
+		if ($s['mode'] == 2) {
 			$s['data'] = substr ($sector, 16, 2336); // 2336b
 			return ($s);
 		}
@@ -411,7 +422,7 @@ class CDEMU {
 		$s['address'] = $this->lba2msf ($lba);
 		$s['mode'] = 1;
 		$s['data'] = $data;
-		$s['sector'] = $s['sync'] . $this->lba2header ($lba) . chr (1) . $data;
+		$s['sector'] = $s['sync'] . $this->lba2header ($lba) . "\x01" . $data;
 		$s['edc'] = $this->edc_compute ($s['sector'], 0, 2064);
 		$s['reserved'] = "\x00\x00\x00\x00\x00\x00\x00\x00";
 		$s['sector'] .= $s['edc'] . $s['reserved'];
@@ -531,8 +542,8 @@ class CDEMU {
 		return (chr ($minutes) . chr ($seconds)  . chr ($frames));
 	}
 	
-	
 	// Hash entire image
+	// TODO: Add support for hashing tracks while we hash the entire image
 	public function hash_image ($hash_algos, $cb_progress = false) {
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
@@ -548,15 +559,11 @@ class CDEMU {
 		$hashes = array();
 		foreach ($hash_algos as $algo)
 			$hashes[$algo] = hash_init ($algo); // Init hash
-		
 		if (!$this->set_track (1))
 			return (false); // Track change error (Image ended)
-		
 		$s_len = $this->CD['sector_count'];
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
 			$sector = $this->read (false, true);
-			if (!isset ($sector['sector']))
-				return (false); // Data read error
 			if ($hash_algos !== false) {
 				foreach ($hashes as $hash)
 					hash_update ($hash, $sector['sector']);
@@ -564,7 +571,6 @@ class CDEMU {
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $s_len, $s_cur + 1);
 		}
-		
 		foreach ($hashes as $algo => $hash)
 			$hashes[$algo] = hash_final ($hash, false);
 		return ($hashes);
@@ -624,8 +630,6 @@ class CDEMU {
 		
 		for ($pos = 0; $pos < $length; $pos++) {
 			$data = $this->read ($sector + $pos, true);
-			if (!isset ($data['sector']))
-				return (false); // Data read error
 			if ($file !== false and fwrite ($fp, $data['sector']) === false)
 				return (false); // File error: out of space
 			if ($hash_algos !== false) {
@@ -683,8 +687,6 @@ class CDEMU {
 		$s_len = $this->get_track_length (true);
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
 			$sector = $this->read (false, true);
-			if (!isset ($sector['sector']))
-				return (false); // Data read error
 			if ($file !== false and fwrite ($fp, $sector['sector']) === false)
 				return (false); // File error: out of space
 			if ($hash_algos !== false) {
