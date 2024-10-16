@@ -292,15 +292,15 @@ class CDEMU {
 		$s = array();
 		$s['sector'] = $sector; // Save raw sector
 		
-		if ((isset ($this->CD['track'][$this->track]['format']) and $this->CD['track'][$this->track]['format'] == CDEMU_TRACK_AUDIO) or substr ($sector, 0, 12) != "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00") { // Audio check
+		if ($this->CD['track'][$this->track]['format'] == CDEMU_TRACK_AUDIO or substr ($sector, 0, 12) != "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00") { // Audio check
 			$s['data'] = $sector; // 2352b
 			return ($s);
 		}
 		
 		// Data Track Header
-		//   Sync	  - 12b
-		//   Address  - 3b
-		//   Mode	  - 1b
+		//   Sync	 - 12b
+		//   Address - 3b
+		//   Mode	 - 1b
 		$s['sync'] = substr ($sector, 0, 12);
 		$s['address'] = $this->header2msf (substr ($sector, 12, 3));
 		$s['mode'] = ord (substr ($sector, 15, 1));
@@ -739,7 +739,6 @@ class CDEMU {
 	}
 	
 	// Track type
-	//   0 = Audio, 1 = Data
 	public function get_track_type ($track = false) {
 		if ($track === false)
 			$track = $this->track;
@@ -766,14 +765,16 @@ class CDEMU {
 		return ($this->sect_list);
 	}
 	
-	// Returned unaccessed sector areas
-	public function get_sector_unaccessed_list() {
-		$access = $this->get_sector_access_list();
-		$t_start = $this->get_track_start (true);
-		$t_end = $t_start + $this->get_track_length (true);
+	// Unaccessed sector areas, optionally set limits
+	public function get_sector_unaccessed_list($sector_start = false, $sector_end = false) {
 		$sectors = array();
+		$access = $this->get_sector_access_list();
+		if ($sector_start === false)
+			$sector_start = 0;
+		if ($sector_end === false)
+			$sector_end = $this->get_length (true);
 		$gap = false;
-		for ($i = $t_start; $i <= $t_end; $i++) {
+		for ($i = $sector_start; $i <= $sector_end; $i++) {
 			if ($gap === false and !isset ($access[$i]))
 				$sectors[($gap = $i)] = 1;
 			else if ($gap !== false and !isset ($access[$i]))

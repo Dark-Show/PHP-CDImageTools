@@ -64,7 +64,7 @@ function cli_process_argv ($argv) {
 	}
 	$cdemu = new CDEMU;
 	if (isset ($cue))
-		echo $cdemu->load_cue ($cue);
+		$cdemu->load_cue ($cue);
 	
 	if (isset ($iso))
 		$cdemu->load_iso ($iso);
@@ -178,8 +178,9 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 		}
 		
 		// Dump any unaccessed sectors within the data track
-		$sectors = $cdemu->get_sector_unaccessed_list();
-		foreach ($sectors as $sector => $length) {
+		$t_start = $cdemu->get_track_start (true);
+		$t_end = $t_start + $cdemu->get_track_length (true);
+		foreach ($cdemu->get_sector_unaccessed_list ($t_start, $t_end) as $sector => $length) {
 			echo ("    LBA: $sector\n");
 			$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');
 			$tdr['LBA'] = array ($sector => array ('hash' => $hash, 'file' => $track_dir . "LBA$sector.bin"));
