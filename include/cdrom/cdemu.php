@@ -209,6 +209,7 @@ class CDEMU {
 		else if ($this->CD['track'][$this->track]['file_format'] == CDEMU_FILE_ISO)
 			$sector_size = self::iso_sector_size;
 		
+		// Detect track and close file on multi-file track change
 		if ($this->sector < $this->CD['sector_count']) { // Same track check
 			$start = $this->CD['track'][$this->track]['lba'];
 			$end = ($start + $this->CD['track'][$this->track]['length']);
@@ -224,8 +225,9 @@ class CDEMU {
 					fclose ($this->fh); // Close file
 			}
 		}
-		if (is_resource ($this->fh) && feof ($this->fh))
+		if (is_resource ($this->fh) && feof ($this->fh)) // End of file check
 			fclose ($this->fh);
+		
 		if (!is_resource ($this->fh)) { // If no file is open, open file and seek
 			$this->fh = fopen ($this->CD['track'][$this->track]['file'], 'r'); // Open track bin
 			$this->buffer = array(); // Invalidate buffer
@@ -236,10 +238,10 @@ class CDEMU {
 		}
 		if (!isset ($this->buffer[$this->sector])) { // Needed sector not in buffer
 			$this->buffer = array(); // Clear buffer
-			for ($i = $this->sector; $i < ($this->sector + 10); $i++) { // Load 10 sectors into buffer
-				if ($i > $this->CD['sector_count'] or feof ($this->fh)) // if not end of disk/file (multifile)
-					continue;
+			for ($i = $this->sector; $i < ($this->sector + 10) and $i < $this->CD['sector_count']; $i++) { // Load 10 sectors into buffer
 				$data = fread ($this->fh, $sector_size); // Read sector
+				if (feof ($this->fh)) // if not end of file
+					break;
 				if ($this->CD['track'][$this->track]['file_format'] == CDEMU_FILE_BIN) {
 					if ($limit_processing)
 						$this->buffer[$i] = array ('sector' => $data); // Forward raw bin/cue type sector
@@ -564,10 +566,8 @@ class CDEMU {
 		$s_len = $this->CD['sector_count'];
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
 			$sector = $this->read (false, true);
-			if ($hash_algos !== false) {
-				foreach ($hashes as $hash)
-					hash_update ($hash, $sector['sector']);
-			}
+			foreach ($hashes as $hash)
+				hash_update ($hash, $sector['sector']);
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $s_len, $s_cur + 1);
 		}
@@ -768,7 +768,7 @@ class CDEMU {
 	// Unaccessed sector areas, optionally set limits
 	public function get_sector_unaccessed_list($sector_start = false, $sector_end = false) {
 		$sectors = array();
-		$access = $this->get_sector_access_list();
+		$access = $this->sect_list;
 		if ($sector_start === false)
 			$sector_start = 0;
 		if ($sector_end === false)
@@ -786,8 +786,14 @@ class CDEMU {
 	}
 	
 	// Clear accessed sector list
-	public function clear_sector_access_list() {	
-		$this->sect_list = array();
+	public function clear_sector_access_list ($sector = false) {
+		if ($sector === false)
+			$this->sect_list = array();
+		else if (isset ($this->sect_list[$sector]))
+			unset ($this->sect_list[$sector]);
+		else
+			return (false);
+		return (true);
 	}
 	
 	// Current sector

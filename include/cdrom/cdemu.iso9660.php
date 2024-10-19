@@ -110,7 +110,7 @@ class ISO9660 {
 	}
 	
 	// Returns version information from file_id
-	public function &get_fileid_version ($file_id) {
+	public function get_fileid_version ($file_id) {
 		if (($pos = strpos ($file_id, ';')) === false)
 			return (false);
 		$ver = substr ($file_id, $pos + 1);
