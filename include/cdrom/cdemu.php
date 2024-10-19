@@ -192,9 +192,30 @@ class CDEMU {
 			if (is_resource ($this->fh)) // If we have a file open, close it so read() can do the file position seek
 				fclose ($this->fh);
 			$this->sector = $pos; // Set current sector
+			
+			$this->track_detect(); // Detect track after seek
 			return (true);
 		}
 		return (false); // EOD
+	}
+	
+	// Detect track and when multi-file close file
+	private function track_detect() {
+		if ($this->sector < $this->CD['sector_count']) { // Same track check
+			$start = $this->CD['track'][$this->track]['lba'];
+			$end = ($start + $this->CD['track'][$this->track]['length']);
+			if ($this->sector < $start or $this->sector >= $end) { // Outside Track?
+				for ($t = 1; $t <= count ($this->CD['track']); $t++) { // Search tracks
+					$start = $this->CD['track'][$t]['lba'];
+					$end = $start + $this->CD['track'][$t]['length'];
+					if ($this->sector >= $start and $this->sector < $end) // Inside track?
+						break;
+				}
+				$this->track = $t; // Save found/last track
+				if (is_resource ($this->fh) and $this->CD['multifile']) // If track changed while multifile, reload proper image
+					fclose ($this->fh); // Close file
+			}
+		}
 	}
 	
 	// Read currect sector from image, optionally seek and/or limit processing to only return sector data
@@ -209,22 +230,6 @@ class CDEMU {
 		else if ($this->CD['track'][$this->track]['file_format'] == CDEMU_FILE_ISO)
 			$sector_size = self::iso_sector_size;
 		
-		// Detect track and close file on multi-file track change
-		if ($this->sector < $this->CD['sector_count']) { // Same track check
-			$start = $this->CD['track'][$this->track]['lba'];
-			$end = ($start + $this->CD['track'][$this->track]['length']);
-			if ($this->sector < $start or $this->sector >= $end) { // Outside Track?
-				for ($t = 1; $t <= count ($this->CD['track']); $t++) { // Search tracks
-					$start = $this->CD['track'][$t]['lba'];
-					$end = $start + $this->CD['track'][$t]['length'];
-					if ($this->sector >= $start and $this->sector < $end) // Inside track?
-						break;
-				}
-				$this->track = $t; // Save found track. default to last track when EOD
-				if (is_resource ($this->fh) and $this->CD['multifile']) // If track changed while multifile, reload proper image
-					fclose ($this->fh); // Close file
-			}
-		}
 		if (is_resource ($this->fh) && feof ($this->fh)) // End of file check
 			fclose ($this->fh);
 		
@@ -257,7 +262,8 @@ class CDEMU {
 		if (isset ($this->buffer[$this->sector])) {
 			$sector = $this->buffer[$this->sector]; // Save sector
 			$this->sect_list[$this->sector] = isset ($this->sect_list[$this->sector]) ? $this->sect_list[$this->sector]++ : 1; // Increment access list
-			$this->sector++; // Increment sector		   
+			$this->sector++; // Increment sector	
+			$this->track_detect(); // Detect track after sector change
 			return ($sector); // return sector
 		}
 		return ($fail); // EOF
@@ -589,9 +595,9 @@ class CDEMU {
 	public function get_track_by_sector ($sector) {
 		for ($t = 1; $t <= count ($this->CD['track']); $t++) {
 			if (!isset ($this->CD['track'][$t + 1]) or $this->CD['track'][$t + 1]['lba'] > $sector)
-				break;
+				return ($t);
 		}
-		return ($t);
+		return (false);
 	}
 	
 	// Hash sector data using $hash_algos
