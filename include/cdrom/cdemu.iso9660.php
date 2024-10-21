@@ -300,7 +300,7 @@ class ISO9660 {
 					$symlink .= str_replace ("%%t", $track, $symfile);
 				if (file_exists ($file_out))
 					unlink ($file_out);
-				symlink ($symlink, $file_out); // Note: Target non-existent at this point
+				symlink ($symlink, $file_out); // Note: Target may not exist
 				$out = true;
 				return ($out);
 			}

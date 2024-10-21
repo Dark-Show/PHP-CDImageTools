@@ -188,11 +188,10 @@ class CDEMU {
 	public function seek ($pos) {
 		if (!is_numeric ($pos))
 			$pos = $this->msf2lba ($pos);
-		if (is_numeric ($pos) and $pos <= $this->CD['sector_count']) { // Make sure we are inside our limits
+		if (is_numeric ($pos) and $pos < $this->CD['sector_count']) { // Make sure we are inside our limits
 			if (is_resource ($this->fh)) // If we have a file open, close it so read() can do the file position seek
 				fclose ($this->fh);
 			$this->sector = $pos; // Set current sector
-			
 			$this->track_detect(); // Detect track after seek
 			return (true);
 		}
@@ -259,7 +258,7 @@ class CDEMU {
 		
 		// If we have our sector in buffer, return and increment
 		// Note: If we overflow past EOF we will return false on the next read
-		if (isset ($this->buffer[$this->sector])) {
+		if (isset ($this->buffer[$this->sector]) and $this->buffer[$this->sector] !== false) {
 			$sector = $this->buffer[$this->sector]; // Save sector
 			$this->sect_list[$this->sector] = isset ($this->sect_list[$this->sector]) ? $this->sect_list[$this->sector]++ : 1; // Increment access list
 			$this->sector++; // Increment sector	
@@ -628,14 +627,16 @@ class CDEMU {
 			foreach ($hash_algos as $algo)
 				$hashes[$algo] = hash_init ($algo); // Init hash
 		}
-		if ($file !== false and ($fp = fopen ($file, 'w')) === false)
-			return (false); // File error: could not open file for writing
-			
-		if ($sector > $this->get_length (true))
+		
+		if ($sector >= $this->CD['sector_count'])
 			return (false);
 		
+		if ($file !== false and ($fp = fopen ($file, 'w')) === false)
+			return (false); // File error: could not open file for writing
+		
 		for ($pos = 0; $pos < $length; $pos++) {
-			$data = $this->read ($sector + $pos, true);
+			if ($sector + $pos >= $this->CD['sector_count'] or ($data = $this->read ($sector + $pos, true)) === false)
+				continue; // Sector read error
 			if ($file !== false and fwrite ($fp, $data['sector']) === false)
 				return (false); // File error: out of space
 			if ($hash_algos !== false) {
@@ -772,7 +773,7 @@ class CDEMU {
 	}
 	
 	// Unaccessed sector areas, optionally set limits
-	public function get_sector_unaccessed_list($sector_start = false, $sector_end = false) {
+	public function get_sector_unaccessed_list ($sector_start = false, $sector_end = false) {
 		$sectors = array();
 		$access = $this->sect_list;
 		if ($sector_start === false)

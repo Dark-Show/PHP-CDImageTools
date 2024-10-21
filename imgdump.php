@@ -80,8 +80,9 @@ function cli_process_argv ($argv) {
 
 // Dump image loaded by cdemu
 function dump_image ($cdemu, $dir_out, $hash_algos = false) {
-	$hash = $cdemu->hash_image ($hash_algos, 'cli_dump_progress');
-	$mdr = array ('hash' => $hash, 'track' => array()); // Media descriptor
+	$hash = $cdemu->hash_image ($hash_algos, 'cli_dump_progress'); // Hash entire image
+	$mdr = array ('hash' => $hash, 'track' => array());
+	$mdr['hash'] = $hash;
 	if (is_array ($hash)) {
 		foreach ($hash as $algo => $res)
 			echo ("  $algo: $res\n");
@@ -179,7 +180,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 		
 		// Dump any unaccessed sectors within the data track
 		$t_start = $cdemu->get_track_start (true);
-		$t_end = $t_start + $cdemu->get_track_length (true);
+		$t_end = $t_start + $cdemu->get_track_length (true) - 1;
 		foreach ($cdemu->get_sector_unaccessed_list ($t_start, $t_end) as $sector => $length) {
 			echo ("    LBA: $sector\n");
 			$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');
