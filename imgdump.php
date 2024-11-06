@@ -63,7 +63,7 @@ function cli_process_argv ($argv) {
 	}
 	$cdemu = new CDEMU;
 	if (isset ($cue) and !$cdemu->load_cue ($cue))
-		echo ("Error: Failed to load cue file\n");
+		die ("Error: Failed to load cue file\n");
 	
 	if (isset ($iso))
 		$cdemu->load_iso ($iso);
@@ -80,9 +80,9 @@ function cli_process_argv ($argv) {
 // Dump image loaded by cdemu
 function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 	$hash = $cdemu->hash_image ($hash_algos, 'cli_dump_progress'); // Hash entire image
-	$mdr = array ('hash' => $hash, 'track' => array()); // Media Descriptor
-	if (is_array ($hash)) {
-		foreach ($hash as $algo => $res)
+	$mdr = array ('hash' => $hash['full'], 'track' => array()); // Media Descriptor
+	if (is_array ($hash) and isset ($hash['full'])) {
+		foreach ($hash['full'] as $algo => $res)
 			echo ("  $algo: $res\n");
 		echo ("\n");
 	}
@@ -95,13 +95,18 @@ function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 		if (!$cdemu->set_track ($track))
 			die ("Error: Unexpected end of image!\n");
 		if ($cdemu->get_track_type() == 0) { // Audio
-			$tdr = dump_audio ($cdemu, $dir_out, "Track $t.cdda", $hash_algos);
+			$tdr = dump_audio ($cdemu, $dir_out, "Track $t.cdda", $hash['track'][$track]);
 			$mdr['track'][$track] = $tdr;
 		} else { // Data
 			if (!is_dir ($dir_out . "Track $t"))
 				mkdir ($dir_out . "Track $t", 0777, true);
-			$tdr = dump_data ($cdemu, $dir_out, "Track $t/", "../../Track %%T.cdda", $hash_algos); // Returns track descriptor
+			$tdr = dump_data ($cdemu, $dir_out, "Track $t/", "../../Track %%T.cdda", $hash_algos, $hash['track'][$track]); // Returns track descriptor
 			$mdr['track'][$track] = $tdr;
+		}
+		if (is_array ($hash['track'][$track])) {
+			foreach ($hash['track'][$track] as $algo => $res)
+				echo ("    $algo: $res\n");
+			echo ("\n");
 		}
 	}
 	//print_r ($mdr);
@@ -109,27 +114,16 @@ function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 }
 
 // Dump audio track to $file
-function dump_audio ($cdemu, $dir_out, $filename, $hash_algos) {
-	if (($hash = $cdemu->save_track ($dir_out . $filename, false, $hash_algos, 'cli_dump_progress')) === false)
+function dump_audio ($cdemu, $dir_out, $filename, $hash) {
+	if ($cdemu->save_track ($dir_out . $filename, false, false, 'cli_dump_progress') === false)
 		return (false);
 	$tdr = array ('hash' => $hash, 'format' => 'audio', 'file' => $filename, 'file_format' => 'cdda'); // Track descriptor
-	if (is_array ($hash)) {
-		foreach ($hash as $algo => $res)
-			echo ("    $algo: $res\n");
-		echo ("\n");
-	}
 	return ($tdr);
 }
 
 // Dump data track to $dir_out
-function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_algos = false) {
-	$hash = $cdemu->hash_track ($hash_algos, $cdemu->get_track(), 'cli_dump_progress');
+function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_algos = false, $hash) {
 	$tdr = array ('hash' => $hash, 'format' => 'data'); // Track descriptor
-	if (is_array ($hash)) {
-		foreach ($hash as $algo => $res)
-			echo ("    $algo: $res\n");
-		echo ("\n");
-	}
 	$cdemu->clear_sector_access_list();
 	
 	$iso9660 = new CDEMU\ISO9660;

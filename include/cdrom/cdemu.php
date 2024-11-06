@@ -67,7 +67,7 @@ class CDEMU {
 						$file = substr ($file, 1, strlen ($file) - 2);
 					
 					if (!file_exists ($path . $file))
-						return (CDEMU_RET_ERR_FILE);
+						return (false);
 					// TODO: Search for possible files
 					$sector_count += filesize ($path . $file) / self::bin_sector_size; // Sector count using file length
 					break;
@@ -550,8 +550,7 @@ class CDEMU {
 		return (chr ($minutes) . chr ($seconds)  . chr ($frames));
 	}
 	
-	// Hash entire image
-	// TODO: Add support for hashing tracks while we hash the entire image
+	// Hash image and tracks
 	public function hash_image ($hash_algos, $cb_progress = false) {
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
@@ -564,21 +563,32 @@ class CDEMU {
 			}
 			return (false); // Error: Hash not found
 		}
-		$hashes = array();
+		$hashes = array ('full' => array(), 'track' => array());
 		foreach ($hash_algos as $algo)
-			$hashes[$algo] = hash_init ($algo); // Init hash
+			$hashes['full'][$algo] = hash_init ($algo); // Init full hash
 		if (!$this->set_track (1))
 			return (false); // Track change error (Image ended)
 		$s_len = $this->CD['sector_count'];
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
+			$t_cur = $this->get_track(); // Get current track
+			if (!isset ($hashes['track'][$t_cur])) {
+				foreach ($hash_algos as $algo)
+					$hashes['track'][$t_cur][$algo] = hash_init ($algo); // Init track hash
+			}
 			$sector = $this->read (false, true);
-			foreach ($hashes as $hash)
+			foreach ($hashes['full'] as $hash)
+				hash_update ($hash, $sector['sector']);
+			foreach ($hashes['track'][$t_cur] as $hash)
 				hash_update ($hash, $sector['sector']);
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $s_len, $s_cur + 1);
 		}
-		foreach ($hashes as $algo => $hash)
-			$hashes[$algo] = hash_final ($hash, false);
+		foreach ($hashes['full'] as $algo => $hash)
+			$hashes['full'][$algo] = hash_final ($hash, false);
+		foreach ($hashes['track'] as $t_cur => $h) {
+			foreach ($h as $algo => $hash)
+				$hashes['track'][$t_cur][$algo] = hash_final ($hash, false);
+		}
 		return ($hashes);
 	}
 
