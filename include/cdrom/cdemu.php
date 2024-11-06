@@ -52,7 +52,8 @@ class CDEMU {
 		$disk = array();
 		$track = array();
 		foreach ($cue as $line) { // Process CUE into array
-			$e_line = explode (' ', trim ($line));
+			$line = trim ($line);
+			$e_line = explode (' ', $line);
 			switch (strtolower ($e_line[0])) {
 				case 'file':
 					$type = strtolower ($e_line[count ($e_line) - 1]); // File type
@@ -61,7 +62,7 @@ class CDEMU {
 					
 					if (isset ($file))
 						$multifile = true;
-					$file = trim (substr (trim ($line), 5, strlen ($line) - (strlen ($type) + 6))); // Store file from between FILE and TYPE
+					$file = trim (substr ($line, 5, strlen ($line) - (strlen ($type) + 6))); // Store file from between FILE and TYPE
 					if (($qc = substr ($file, 0, 1)) == '"' or $qc == "'")
 						$file = substr ($file, 1, strlen ($file) - 2);
 					

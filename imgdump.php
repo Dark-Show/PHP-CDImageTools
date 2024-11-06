@@ -9,7 +9,6 @@ const VERSION = '0.1';
 include ('include/cdrom/cdemu.const.php');
 include ('include/cdrom/cdemu.php');
 include ('include/cdrom/cdemu.iso9660.php');
-//include ('./include/binary.php'); // DEBUG FUNCTIONS
 
 cli_process_argv ($argv);
 
@@ -81,8 +80,7 @@ function cli_process_argv ($argv) {
 // Dump image loaded by cdemu
 function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 	$hash = $cdemu->hash_image ($hash_algos, 'cli_dump_progress'); // Hash entire image
-	$mdr = array ('hash' => $hash, 'track' => array());
-	$mdr['hash'] = $hash;
+	$mdr = array ('hash' => $hash, 'track' => array()); // Media Descriptor
 	if (is_array ($hash)) {
 		foreach ($hash as $algo => $res)
 			echo ("  $algo: $res\n");
@@ -132,8 +130,8 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 			echo ("    $algo: $res\n");
 		echo ("\n");
 	}
-	
 	$cdemu->clear_sector_access_list();
+	
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
 	if ($iso9660->init()) { // Process ISO9660 filesystem
@@ -199,20 +197,20 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 // TODO: Generate slim volume descriptor
 //       Check for volume descriptor conformance issues
 function desc_volume_descriptor ($vd) {
-	$out = array ();
+	$out = array();
 	return ($vd);
 }
 
 // TODO: Generate slim path table
 //       Check for path table conformance issues
 function desc_path_table ($pt) {
-	$out = array ();
+	$out = array();
 	return ($pt);
 }
 
 // TODO: Generate slim directory record
 function desc_directory_record ($dr) {
-	$out = array ();
+	$out = array();
 	return ($dr);
 }
 
