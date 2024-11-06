@@ -62,8 +62,8 @@ function cli_process_argv ($argv) {
 		}
 	}
 	$cdemu = new CDEMU;
-	if (isset ($cue))
-		$cdemu->load_cue ($cue);
+	if (isset ($cue) and !$cdemu->load_cue ($cue))
+		echo ("Error: Failed to load cue file\n");
 	
 	if (isset ($iso))
 		$cdemu->load_iso ($iso);

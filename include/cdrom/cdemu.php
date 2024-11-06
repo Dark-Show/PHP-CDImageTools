@@ -40,7 +40,7 @@ class CDEMU {
 	// Load CUE file
 	public function load_cue ($cue_file) {
 		if (!file_exists ($cue_file))
-			return (CDEMU_RET_ERR_FILE);
+			return (false);
 		$path = explode ("/", $cue_file);
 		$cue_file = $path[count ($path) - 1];
 		$path[count ($path) - 1] = '';
@@ -58,7 +58,7 @@ class CDEMU {
 				case 'file':
 					$type = strtolower ($e_line[count ($e_line) - 1]); // File type
 					if ($type != "binary")
-						return (CDEMU_RET_ERR_CUE);
+						return (false);
 					
 					if (isset ($file))
 						$multifile = true;
@@ -74,14 +74,14 @@ class CDEMU {
 				case 'track':
 					if (isset ($t_in)) { // New track
 						if (!isset ($index))
-							return (CDEMU_RET_ERR_CUE);
+							return (false);
 						$track['index'] = $index;
 						$disk[count ($disk) + 1] = $track; // Save track
 						$track = array();
 						$index = array();
 					}
 					if (!isset ($file))
-						return (CDEMU_RET_ERR_CUE);
+						return (false);
 					$t_in = true; // Inside track
 					$track['file'] = $file;
 					$track['file_format'] = CDEMU_FILE_BIN;
@@ -91,7 +91,7 @@ class CDEMU {
 					else if (substr ($track_format, 0, 4) == 'mode')
 						$track['track_format'] = CDEMU_TRACK_DATA; // Data
 					else
-						return (CDEMU_RET_ERR_CUE);
+						return (false);
 					break;
 				case 'index':
 					$index[(int)$e_line[1]] = $e_line[2]; // Save time into index
