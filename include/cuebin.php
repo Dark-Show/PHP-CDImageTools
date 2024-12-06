@@ -174,7 +174,7 @@ function cdrom_split_cue (&$disk, $basename, $output_dir, $comp = CDROM_AUDIO_RA
 						$i_fh = fopen ($disk['path'] . $info['file'], "rb");
 						$i_file = $info['file'];
 					}
-					$disk['track'][$track]['file'] = "$basename." . ($track < 10 ? '0' : '') . "$track.bin";
+					$disk['track'][$track]['file'] = "$basename (Track " . ($track < 10 ? '0' : '') . "$track).bin";
 					$o_fh = fopen ($output_dir . $disk['track'][$track]['file'], "wb");
 					if (isset ($disk['track'][$track + 1]) and $info['file'] == $disk['track'][$track + 1]['file']) {
 						$end = cdrom_msf2lba ($disk['track'][$track + 1]['index'][1]) * CDROM_SECTOR;
@@ -191,16 +191,16 @@ function cdrom_split_cue (&$disk, $basename, $output_dir, $comp = CDROM_AUDIO_RA
 					fclose ($o_fh);
 					break;
 				case 'WAVE':
-					ffmpeg_wav2pcm ($disk['path'] . $disk['track'][$track]['file'], "$output_dir$basename." . ($track < 10 ? '0' : '') . "$track.bin");
+					ffmpeg_wav2pcm ($disk['path'] . $disk['track'][$track]['file'], "$output_dir$basename (Track " . ($track < 10 ? '0' : '') . "$track).bin");
 					$delete = true;
 					$disk['track'][$track]['file_type'] = "BINARY";
 					$disk['track'][$track]['file'] = "$basename." . ($track < 10 ? '0' : '') . "$track.bin";
 					break;
 				case 'FLAC':
-					ffmpeg_flac2pcm ($disk['path'] . $disk['track'][$track]['file'], "$output_dir$basename." . ($track < 10 ? '0' : '') . "$track.bin");
+					ffmpeg_flac2pcm ($disk['path'] . $disk['track'][$track]['file'], "$output_dir$basename (Track " . ($track < 10 ? '0' : '') . "$track).bin");
 					$delete = true;
 					$disk['track'][$track]['file_type'] = "BINARY";
-					$disk['track'][$track]['file'] = "$basename." . ($track < 10 ? '0' : '') . "$track.bin";
+					$disk['track'][$track]['file'] = "$basename (Track " . ($track < 10 ? '0' : '') . "$track).bin";
 					break;
 				default:
 					return (false);
@@ -222,14 +222,14 @@ function cdrom_split_cue (&$disk, $basename, $output_dir, $comp = CDROM_AUDIO_RA
 				$delete = false;
 				break;
 			case CDROM_AUDIO_WAVE:
-				ffmpeg_pcm2wav ($output_dir . $disk['track'][$track]['file'], "$output_dir$basename." . ($track < 10 ? '0' : '') . "$track.wav");
-				$disk['track'][$track]['file'] = "$basename." . ($track < 10 ? '0' : '') . "$track.wav";
+				ffmpeg_pcm2wav ($output_dir . $disk['track'][$track]['file'], "$output_dir$basename (Track " . ($track < 10 ? '0' : '') . "$track).wav");
+				$disk['track'][$track]['file'] = "$basename (Track " . ($track < 10 ? '0' : '') . "$track).wav";
 				$disk['track'][$track]['file_type'] = "WAVE";
 				$delete = true;
 				break;
 			case CDROM_AUDIO_FLAC:
-				ffmpeg_pcm2flac ($output_dir . $disk['track'][$track]['file'], "$output_dir$basename." . ($track < 10 ? '0' : '') . "$track.flac");
-				$disk['track'][$track]['file'] = "$basename." . ($track < 10 ? '0' : '') . "$track.flac";
+				ffmpeg_pcm2flac ($output_dir . $disk['track'][$track]['file'], "$output_dir$basename (Track " . ($track < 10 ? '0' : '') . "$track).flac");
+				$disk['track'][$track]['file'] = "$basename (Track " . ($track < 10 ? '0' : '') . "$track).flac";
 				$disk['track'][$track]['file_type'] = "FLAC";
 				$delete = true;
 				break;
@@ -237,7 +237,7 @@ function cdrom_split_cue (&$disk, $basename, $output_dir, $comp = CDROM_AUDIO_RA
 				return (false);
 		}
 		if ($delete)
-			unlink ("$output_dir$basename." . ($track < 10 ? '0' : '') . "$track.bin");
+			unlink ("$output_dir$basename (Track " . ($track < 10 ? '0' : '') . "$track).bin");
 	}
 	fclose ($i_fh);
 	return (true);
