@@ -164,7 +164,7 @@ function cdrom_split_cue (&$disk, $basename, $output_dir, $comp = CDROM_AUDIO_RA
 		if (!is_numeric ($track))
 			continue;
 		
-		if (count ($disk['track']) > 1)
+		if (count ($disk['track']) > 9)
 			$file_out = "$basename (Track " . ($track < 10 ? '0' : '') . "$track)";
 		else
 			$file_out = $basename;
