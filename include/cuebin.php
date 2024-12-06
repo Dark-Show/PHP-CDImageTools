@@ -72,13 +72,13 @@ function cdrom_save_cue ($disk, $cue_file) {
 			continue;
 		if ($last_file === false or $last_file != $info['file']) {
 			$last_file = $info['file'];
-			$data .= 'FILE "' . $info['file'] . '" ' . $info['file_type'] . "\n";
+			$data .= 'FILE "' . $info['file'] . '" ' . $info['file_type'] . "\r\n";
 		}
-		$data .= CDROM_CUE_TAB . "TRACK " . ($track < 10 ? '0' : '') .  "$track " . $info['track_type'] . "\n";
+		$data .= CDROM_CUE_TAB . "TRACK " . ($track < 10 ? '0' : '') .  "$track " . $info['track_type'] . "\r\n";
 		if (isset ($info['pregap']))
-			$data .= CDROM_CUE_TAB . CDROM_CUE_TAB . "PREGAP " . $info['pregap'] . "\n";
+			$data .= CDROM_CUE_TAB . CDROM_CUE_TAB . "PREGAP " . $info['pregap'] . "\r\n";
 		foreach ($info['index'] as $index => $time)
-			$data .= CDROM_CUE_TAB . CDROM_CUE_TAB . "INDEX " . ($index < 10 ? '0' : '') . "$index $time\n";
+			$data .= CDROM_CUE_TAB . CDROM_CUE_TAB . "INDEX " . ($index < 10 ? '0' : '') . "$index $time\r\n";
 	}
 	$fh = fopen ($cue_file, "wb");
 	fwrite ($fh, $data);
@@ -219,6 +219,7 @@ function cdrom_split_cue (&$disk, $basename, $output_dir, $comp = CDROM_AUDIO_RA
 			continue;
 		switch ($comp) {
 			case CDROM_AUDIO_RAW:
+				$delete = false;
 				break;
 			case CDROM_AUDIO_WAVE:
 				ffmpeg_pcm2wav ($output_dir . $disk['track'][$track]['file'], "$output_dir$basename." . ($track < 10 ? '0' : '') . "$track.wav");

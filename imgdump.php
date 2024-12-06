@@ -65,22 +65,23 @@ function cli_process_argv ($argv) {
 	if (isset ($cue) and !$cdemu->load_cue ($cue))
 		die ("Error: Failed to load cue file\n");
 	
-	if (isset ($iso))
-		$cdemu->load_iso ($iso);
+	if (isset ($iso) and !$cdemu->load_iso ($iso))
+		die ("Error: Failed to load iso file\n");
 	
 	if (isset ($bin)) {
 		foreach ($bin as $b) {
-			$cdemu->load_bin ($b);
+			if (!$cdemu->load_bin ($b))
+				die ("Error: Failed to load bin file '$b'\n");
 		}
 	}
-	dump_image ($cdemu, $dir_out, 'sha1');
+	dump_image ($cdemu, $dir_out, ['crc32b', 'sha256', 'md5']);
 	$cdemu->eject(); // Eject Disk
 }
 
 // Dump image loaded by cdemu
 function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 	$hash = $cdemu->hash_image ($hash_algos, 'cli_dump_progress'); // Hash entire image
-	$mdr = array ('hash' => $hash['full'], 'track' => array()); // Media Descriptor
+	$mdr = array ('hash' => $hash['full'], 'track' => array()); // Media descriptor
 	if (is_array ($hash) and isset ($hash['full'])) {
 		foreach ($hash['full'] as $algo => $res)
 			echo ("  $algo: $res\n");
@@ -92,21 +93,23 @@ function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
 		$mdr['track'][$track] = array();
 		echo ("  Track $t\n");
-		if (!$cdemu->set_track ($track))
-			die ("Error: Unexpected end of image!\n");
-		if ($cdemu->get_track_type() == 0) { // Audio
-			$tdr = dump_audio ($cdemu, $dir_out, "Track $t.cdda", $hash['track'][$track]);
-			$mdr['track'][$track] = $tdr;
-		} else { // Data
-			if (!is_dir ($dir_out . "Track $t"))
-				mkdir ($dir_out . "Track $t", 0777, true);
-			$tdr = dump_data ($cdemu, $dir_out, "Track $t/", "../../Track %%T.cdda", $hash_algos, $hash['track'][$track]); // Returns track descriptor
-			$mdr['track'][$track] = $tdr;
-		}
 		if (is_array ($hash['track'][$track])) {
 			foreach ($hash['track'][$track] as $algo => $res)
 				echo ("    $algo: $res\n");
 			echo ("\n");
+		}
+		if (!$cdemu->set_track ($track))
+			die ("Error: Unexpected end of image!\n");
+		if ($cdemu->get_track_type() == 0) { // Audio
+			$tdr = dump_audio ($cdemu, $dir_out, "Track $t.cdda");
+			$tdr['hash'] = $hash['track'][$track];
+			$mdr['track'][$track] = $tdr;
+		} else { // Data
+			if (!is_dir ($dir_out . "Track $t"))
+				mkdir ($dir_out . "Track $t", 0777, true);
+			$tdr = dump_data ($cdemu, $dir_out, "Track $t/", "../../Track %%T.cdda", $hash_algos); // Returns track descriptor
+			$tdr['hash'] = $hash['track'][$track];
+			$mdr['track'][$track] = $tdr;
 		}
 	}
 	//print_r ($mdr);
@@ -114,16 +117,16 @@ function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 }
 
 // Dump audio track to $file
-function dump_audio ($cdemu, $dir_out, $filename, $hash) {
+function dump_audio ($cdemu, $dir_out, $filename) {
 	if ($cdemu->save_track ($dir_out . $filename, false, false, 'cli_dump_progress') === false)
 		return (false);
-	$tdr = array ('hash' => $hash, 'format' => 'audio', 'file' => $filename, 'file_format' => 'cdda'); // Track descriptor
+	$tdr = array ('format' => 'audio', 'file' => $filename, 'file_format' => 'cdda'); // Track descriptor
 	return ($tdr);
 }
 
 // Dump data track to $dir_out
-function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_algos = false, $hash) {
-	$tdr = array ('hash' => $hash, 'format' => 'data'); // Track descriptor
+function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_algos = false) {
+	$tdr = array ('format' => 'data'); // Track descriptor
 	$cdemu->clear_sector_access_list();
 	
 	$iso9660 = new CDEMU\ISO9660;

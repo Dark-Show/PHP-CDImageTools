@@ -62,13 +62,18 @@ class CDEMU {
 					
 					if (isset ($file))
 						$multifile = true;
-					$file = trim (substr ($line, 5, strlen ($line) - (strlen ($type) + 6))); // Store file from between FILE and TYPE
+					$file = trim (substr ($line, 5, strlen ($line) - (strlen ($type) + 6))); // Parse file from between FILE and TYPE
 					if (($qc = substr ($file, 0, 1)) == '"' or $qc == "'")
 						$file = substr ($file, 1, strlen ($file) - 2);
 					
-					if (!file_exists ($path . $file))
-						return (false);
-					// TODO: Search for possible files
+					if (!file_exists ($path . $file)) { // File not found
+						$ff = false; // File found
+						if (file_exists ($path . basename ($file))) // Try stripping any directories
+							$ff = basename ($file);
+						if ($ff === false)
+							return (false);
+						$file = $ff;
+					}
 					$sector_count += filesize ($path . $file) / self::bin_sector_size; // Sector count using file length
 					break;
 				case 'track':
@@ -131,8 +136,8 @@ class CDEMU {
 				else
 					$this->CD['track'][$i]['length'] = (filesize ($path . $disk[$i]['file']) / self::bin_sector_size) - $this->msf2lba ($disk[$i]['index'][1]); // Length using filesize
 			}
-			//if (isset ($disk[$i]['index'][0])) // Index 00 check
-			//	$this->CD['track'][$i]['pregap'] = $this->msf2lba ($disk[$i]['index'][1]) - $this->msf2lba ($disk[$i]['index'][0]); // Pregap
+			if (isset ($disk[$i]['index'][0])) // Index 00 check
+				$this->CD['track'][$i]['index_length'] = $this->msf2lba ($disk[$i]['index'][1]) - $this->msf2lba ($disk[$i]['index'][0]); // Index length
 		}
 		$this->seek (0);
 		return (true);
