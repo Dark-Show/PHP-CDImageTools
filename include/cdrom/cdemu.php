@@ -250,7 +250,7 @@ class CDEMU {
 			$this->buffer = array(); // Clear buffer
 			for ($i = $this->sector; $i < ($this->sector + 10) and $i < $this->CD['sector_count']; $i++) { // Load 10 sectors into buffer
 				$data = fread ($this->fh, $sector_size); // Read sector
-				if (feof ($this->fh)) // if not end of file
+				if (strlen ($data) < $sector_size)
 					break;
 				if ($this->CD['track'][$this->track]['file_format'] == CDEMU_FILE_BIN) {
 					if ($limit_processing)
@@ -259,6 +259,8 @@ class CDEMU {
 						$this->buffer[$i] = $this->read_bin_sector ($data); // Process bin/cue type sector
 				} else if ($this->CD['track'][$this->track]['format'] == CDEMU_FILE_ISO)
 					$this->buffer[$i] = $this->read_iso_sector ($data, $i); // Process iso type sector
+				if (feof ($this->fh)) // if not end of file
+					break;
 			}
 		}
 		

@@ -263,14 +263,6 @@ class ISO9660 {
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
 		
-		// Note: For CDDA referenced files, we use $ex_loc_adj to seek backwards 2sec and add 2sec to the file_length
-		//       This is probably tied to cd-rom pregap and postgap for more exact trimming
-		$ex_loc_adj = (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) ? 150 : 0; // Header time starts at 00:02:00
-		if (($data = $this->o_cdemu->read ($file['ex_loc_be'] - $ex_loc_adj)) === false) {
-			echo ("Error: Unexpected end of image!\n");
-			return ($fail);
-		}
-		
 		if ($hash_algos !== false) {
 			if (is_string ($hash_algos))
 				$hash_algos = array ($hash_algos);
@@ -279,7 +271,6 @@ class ISO9660 {
 					if ($sup_algo == $algo)
 						continue 2;
 				}
-				return (false); // Error: Hash not found
 			}
 			$hashes = array();
 			foreach ($hash_algos as $algo)
@@ -288,6 +279,13 @@ class ISO9660 {
 		
 		$raw = false;
 		$h_riff = false;
+		
+		// Note: For CDDA referenced files, we use $ex_loc_adj to seek backwards 2sec and add 2sec to the file_length
+		$ex_loc_adj = (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) ? 150 : 0; // Header time starts at 00:02:00
+		if (($this->o_cdemu->seek ($file['ex_loc_be'] - $ex_loc_adj)) === false) {
+			echo ("Error: Unexpected end of image!\n");
+			return ($fail);
+		}
 		if (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) {
 			$raw = true;
 			if ($cdda_symlink !== false and $this->o_cdemu->get_track_type() == 0) { // Create cdda symlink
@@ -304,32 +302,14 @@ class ISO9660 {
 				$out = true;
 				return ($out);
 			}
-		} else if (isset ($data['xa']) and ($data['xa']['submode']['audio'] or $data['xa']['submode']['video'] or $data['xa']['submode']['realtime'])) {
+		} else if (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['interleaved']) {
 			$raw = true;
 			$h_riff = true; // RIFF XA header required
 			$h_riff_fmt_id = "CDXA";
 			$h_riff_fmt = $file['extension']['xa']['data'] . "\x00\x00";
 		}
 		
-		if ($raw) {
-			$file_length = (($file['data_len_be'] / 2048) + $ex_loc_adj) * 2352;
-			$out = $data['sector'];
-		} else {
-			$file_length = $file['data_len_be'];
-			$out = $data['data'];
-		}
-			
-		if (!$raw and $file_length < strlen ($out))
-			$out = substr ($out, 0, $file_length - strlen ($out));
-		$length += strlen ($out);
-		
-		if ($h_riff)
-			$out = "RIFF" . pack ('V', $file_length + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $file_length) . $out;
-		
-		if ($hash_algos !== false) {
-			foreach ($hash_algos as $algo)
-				hash_update ($hashes[$algo], $out);
-		}
+		$file_length = $raw ? ((($file['data_len_be'] / 2048) + $ex_loc_adj) * 2352) : $file['data_len_be'];
 		
 		if ($file_out !== false) {
 			$dt = \DateTime::createFromFormat ($file['recording_date']['string_format'], $file['recording_date']['string']);
@@ -338,17 +318,24 @@ class ISO9660 {
 			if (($fver = $this->get_fileid_version ($file['file_id'])) !== false and $fver > 1) // Handle file versions
 				$fhm = 'a';
 			$fh = fopen ($file_out, $fhm);
-			fwrite ($fh, $out);
-			$out = '';
+		}
+		
+		$out = '';
+		if ($h_riff) {
+			$out = "RIFF" . pack ('V', $file_length + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $file_length);
+			if ($hash_algos !== false) {
+				foreach ($hash_algos as $algo)
+					hash_update ($hashes[$algo], $out);
+			}
 		}
 		
 		if ($cb_progress !== false)
 			call_user_func ($cb_progress, $file_length, $length);
 		
-		while ($data !== false and $length < $file_length) {
+		while ($length < $file_length) {
 			if (($data = $this->o_cdemu->read()) === false) {
 				print_r ("Error: Unexpected end of image!\n");
-				continue;
+				break;
 			}
 			if ($raw) {
 				$length += strlen ($data['sector']);
