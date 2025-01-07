@@ -601,7 +601,7 @@ class ISO9660 {
 		$dr['file_id']        = substr ($data, 33, $dr['fi_len']); // File Identifier
 		if ($dr['fi_len'] % 2 != 0)
 			$dr['fi_pad'] = substr ($data, 33 + $dr['fi_len'], 1);
-		$dr['system_use']     = substr ($data, (34 + $dr['fi_len'] - ($dr['fi_len'] % 2 != 0 ? 1 : 0)), ($dr['dr_len'] - (34 - $dr['fi_len']))); // System Use
+		$dr['system_use']     = substr ($data, 34 + $dr['fi_len'] - ($dr['fi_len'] % 2 != 0 ? 1 : 0), ($dr['dr_len'] + ($dr['fi_len'] % 2 != 0 ? 1 : 0) - 34 - $dr['fi_len'])); // System Use
 		$dr['extension'] = array();
 		if (substr ($dr['system_use'], 6, 2) == "XA") { // Detect XA
 			if (!isset ($this->iso_ext['xa']))
