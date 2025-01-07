@@ -19,10 +19,11 @@
 namespace CDEMU;
 class ISO9660 {
 	private $o_cdemu = false; // CDEMU object
+	private $iso_lba = 0; // LBA Entry Point
 	private $iso_vd = false; // Volume Descriptor
 	private $iso_pt = array(); // Path Table
 	private $iso_dr = array(); // Directory Records
-	private $iso_ext = array(); // Extension List
+	private $iso_ext = array(); // Extension
 	
 	// Sets CDEMU object
 	public function set_cdemu ($cdemu) {
@@ -33,9 +34,11 @@ class ISO9660 {
 	}
 	
 	// Initilize filesystem for usage
-	public function init() {
+	public function init ($lba = false) {
 		if ($this->o_cdemu === false) // CDEMU check
 			return (false);
+		if ($lba !== false and is_numeric ($lba))
+			$this->iso_lba = $lba;
 		if ($this->process_volume_descriptor() === false)
 			return (false);
 		$this->iso_ext = array();
@@ -146,7 +149,7 @@ class ISO9660 {
 		
 		$system_area = '';
 		for ($i = 0; $i < 16; $i++) {
-			$data = $this->o_cdemu->read ($i);
+			$data = $this->o_cdemu->read ($this->iso_lba + $i);
 			if (!isset ($data['data']))
 				return (false);
 			$system_area .= $data['data'];
@@ -276,10 +279,8 @@ class ISO9660 {
 			foreach ($hash_algos as $algo)
 				$hashes[$algo] = hash_init ($algo); // Init hash
 		}
-		
 		$raw = false;
 		$h_riff = false;
-		
 		// Note: For CDDA referenced files, we use $ex_loc_adj to seek backwards 2sec and add 2sec to the file_length
 		$ex_loc_adj = (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['cdda']) ? 150 : 0; // Header time starts at 00:02:00
 		if (($this->o_cdemu->seek ($file['ex_loc_be'] - $ex_loc_adj)) === false) {
@@ -302,7 +303,7 @@ class ISO9660 {
 				$out = true;
 				return ($out);
 			}
-		} else if (isset ($file['extension']['xa']) and $file['extension']['xa']['attributes']['interleaved']) {
+		} else if (isset ($file['extension']['xa']) and ($file['extension']['xa']['attributes']['form2'] or $file['extension']['xa']['attributes']['interleaved'])) {
 			$raw = true;
 			$h_riff = true; // RIFF XA header required
 			$h_riff_fmt_id = "CDXA";
@@ -310,7 +311,6 @@ class ISO9660 {
 		}
 		
 		$file_length = $raw ? ((($file['data_len_be'] / 2048) + $ex_loc_adj) * 2352) : $file['data_len_be'];
-		
 		if ($file_out !== false) {
 			$dt = \DateTime::createFromFormat ($file['recording_date']['string_format'], $file['recording_date']['string']);
 			touch ($file_out, $dt->getTimestamp()); // Set file time
@@ -319,7 +319,6 @@ class ISO9660 {
 				$fhm = 'a';
 			$fh = fopen ($file_out, $fhm);
 		}
-		
 		$out = '';
 		if ($h_riff) {
 			$out = "RIFF" . pack ('V', $file_length + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $file_length);
@@ -328,10 +327,8 @@ class ISO9660 {
 					hash_update ($hashes[$algo], $out);
 			}
 		}
-		
 		if ($cb_progress !== false)
 			call_user_func ($cb_progress, $file_length, $length);
-		
 		while ($length < $file_length) {
 			if (($data = $this->o_cdemu->read()) === false) {
 				print_r ("Error: Unexpected end of image!\n");
@@ -372,7 +369,7 @@ class ISO9660 {
 	}
 	
 	private function process_volume_descriptor() {
-		$loc = 16;
+		$loc = $this->iso_lba + 16;
 		do {
 			if (($data = $this->o_cdemu->read ($loc++)) === false)
 				return (false);

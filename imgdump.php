@@ -81,17 +81,16 @@ function cli_process_argv ($argv) {
 // Dump image loaded by cdemu
 function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 	$hash = $cdemu->hash_image ($hash_algos, 'cli_dump_progress'); // Hash entire image
-	$mdr = array ('hash' => $hash['full'], 'track' => array()); // Media descriptor
 	if (is_array ($hash) and isset ($hash['full'])) {
 		foreach ($hash['full'] as $algo => $res)
 			echo ("  $algo: $res\n");
 		echo ("\n");
 	}
+	$cdemu->clear_sector_access_list();
 	
 	// Dump each track
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) {
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
-		$mdr['track'][$track] = array();
 		echo ("  Track $t\n");
 		if (is_array ($hash['track'][$track])) {
 			foreach ($hash['track'][$track] as $algo => $res)
@@ -101,71 +100,53 @@ function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 		if (!$cdemu->set_track ($track))
 			die ("Error: Unexpected end of image!\n");
 		if ($cdemu->get_track_type() == 0) { // Audio
-			$tdr = dump_audio ($cdemu, $dir_out, "Track $t.cdda");
-			$tdr['hash'] = $hash['track'][$track];
-			$mdr['track'][$track] = $tdr;
+			dump_audio ($cdemu, $dir_out, "Track $t.cdda");
 		} else { // Data
 			if (!is_dir ($dir_out . "Track $t"))
 				mkdir ($dir_out . "Track $t", 0777, true);
-			$tdr = dump_data ($cdemu, $dir_out, "Track $t/", "../../Track %%T.cdda", $hash_algos); // Returns track descriptor
-			$tdr['hash'] = $hash['track'][$track];
-			$mdr['track'][$track] = $tdr;
+			dump_data ($cdemu, $dir_out, "Track $t/", "../../Track %%T.cdda", $hash_algos); // Returns track descriptor
 		}
 	}
-	//print_r ($mdr);
-	// TODO: Create media descriptor file
+	return (true);
 }
 
 // Dump audio track to $file
 function dump_audio ($cdemu, $dir_out, $filename) {
 	if ($cdemu->save_track ($dir_out . $filename, false, false, 'cli_dump_progress') === false)
 		return (false);
-	$tdr = array ('format' => 'audio', 'file' => $filename, 'file_format' => 'cdda'); // Track descriptor
-	return ($tdr);
+	return (true);
 }
 
 // Dump data track to $dir_out
 function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_algos = false) {
-	$tdr = array ('format' => 'data'); // Track descriptor
-	$cdemu->clear_sector_access_list();
-	
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
-	if ($iso9660->init()) { // Process ISO9660 filesystem
+	if ($iso9660->init ($cdemu->get_track_start (true))) { // Process ISO9660 filesystem
 		if (!is_dir ($dir_out . $track_dir . "contents"))
 			mkdir ($dir_out . $track_dir . "contents", 0777, true);
-		$tdr = array ('iso9660' => array()); // Filesystem descriptor
-		$tdr['iso9660']['extension'] = $iso9660->get_extension();
-		$tdr['iso9660']['volume_descriptor'] = desc_volume_descriptor ($iso9660->get_volume_descriptor());
-		$tdr['iso9660']['path_table'] = desc_path_table ($iso9660->get_path_table());
 		
 		echo ("    System Area\n");
 		if (($sa = $iso9660->get_system_area()) != str_repeat ("\x00", strlen ($sa))) { // Check if system area is used
 			$hash = $iso9660->save_system_area ($dir_out . $track_dir . 'System Area.bin', $hash_algos);
-			$tdr['iso9660']['system_area'] = array ('hash' => $hash, 'file' => $track_dir . 'System Area.bin');
 			if (is_array ($hash)) {
 				foreach ($hash as $algo => $res)
 					echo ("      $algo: $res\n");
 				echo ("\n");
 			}
-		} else
-			$tdr['iso9660']['system_area'] = false;
+		}
 		unset ($sa);
 		
-		$tdr['iso9660']['content'] = array();
 		$contents = $iso9660->get_content ('/', true, true); // List root recursively
 		foreach ($contents as $c => $meta) { // Save contents to disk
 			echo ("    $c\n");
 			if (substr ($c, -1, 1) == '/') { // Directory
 				if (!is_dir ($dir_out . $track_dir . "contents" . $c))
 					mkdir ($dir_out . $track_dir . "contents" . $c, 0777, true);
-				$tdr['iso9660']['content'][$c] = array ('file' => $track_dir . 'contents' . $c, 'metadata' => desc_directory_record ($meta));
 				continue;
 			}
 			// File
 			$symdepth = ($cdda_symlink !== false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
 			$hash = $iso9660->save_file ($c, $dir_out . $track_dir . "contents" . $iso9660->format_fileid ($c), ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), $hash_algos, 'cli_dump_progress');
-			$tdr['iso9660']['content'][$c] = array ('hash' => $hash, 'file' => $track_dir . "contents" . $iso9660->format_fileid ($c), 'metadata' => desc_directory_record ($meta));
 			if (is_array ($hash)) {
 				foreach ($hash as $algo => $res)
 					echo ("      $algo: $res\n");
@@ -179,36 +160,25 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 		foreach ($cdemu->get_sector_unaccessed_list ($t_start, $t_end) as $sector => $length) {
 			echo ("    LBA: $sector\n");
 			$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');
-			$tdr['LBA'] = array ($sector => array ('hash' => $hash, 'file' => $track_dir . "LBA$sector.bin"));
 			if (is_array ($hash)) {
 				foreach ($hash as $algo => $res)
 					echo ("      $algo: $res\n");
 				echo ("\n");
 			}
 		}
+	} else {
+		// Dump unrecognized data track
+		$sector = $cdemu->get_track_start (true);
+		$length = $cdemu->get_track_length (true);
+		echo ("    LBA: $sector\n");
+		$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');
+		if (is_array ($hash)) {
+			foreach ($hash as $algo => $res)
+				echo ("      $algo: $res\n");
+			echo ("\n");
+		}
 	}
-	// TODO: Dump binary data if not ISO9660
-	return ($tdr); // Return track descriptor
-}
-
-// TODO: Generate slim volume descriptor
-//       Check for volume descriptor conformance issues
-function desc_volume_descriptor ($vd) {
-	$out = array();
-	return ($vd);
-}
-
-// TODO: Generate slim path table
-//       Check for path table conformance issues
-function desc_path_table ($pt) {
-	$out = array();
-	return ($pt);
-}
-
-// TODO: Generate slim directory record
-function desc_directory_record ($dr) {
-	$out = array();
-	return ($dr);
+	return (true); // Return track descriptor
 }
 
 function cli_dump_progress ($length, $pos) {

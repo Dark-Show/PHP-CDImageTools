@@ -479,8 +479,8 @@ class CDEMU {
 	}
 
 	// Compute Cross Interleave Reed-Solomon Code
-	// Note: Modifies $sector
 	// Ported From: ECM Tools (Neill Corlett)
+	// Note: Modifies $sector
 	private function circ_compute (&$sector, $major_count, $minor_count, $major_mult, $minor_inc, $pos) {
 		$size = $major_count * $minor_count;
 		for ($major = 0; $major < $major_count; $major++) {
