@@ -37,8 +37,7 @@ class ISO9660 {
 	public function init ($lba = false) {
 		if ($this->o_cdemu === false) // CDEMU check
 			return (false);
-		if ($lba !== false and is_numeric ($lba))
-			$this->iso_lba = $lba;
+		$this->iso_lba = ($lba !== false and is_numeric ($lba)) ? $lba : 0;
 		if ($this->process_volume_descriptor() === false)
 			return (false);
 		$this->iso_ext = array();
@@ -263,9 +262,9 @@ class ISO9660 {
 	private function &file_read ($file, $cdda_symlink = false, $file_out = false, $hash_algos = false, $cb_progress = false) {
 		$fail = false;
 		$length = 0;
+		$info = array();
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
-		
 		if ($hash_algos !== false) {
 			if (is_string ($hash_algos))
 				$hash_algos = array ($hash_algos);

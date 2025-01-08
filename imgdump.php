@@ -81,31 +81,21 @@ function cli_process_argv ($argv) {
 // Dump image loaded by cdemu
 function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 	$hash = $cdemu->hash_image ($hash_algos, 'cli_dump_progress'); // Hash entire image
-	if (is_array ($hash) and isset ($hash['full'])) {
-		foreach ($hash['full'] as $algo => $res)
-			echo ("  $algo: $res\n");
-		echo ("\n");
-	}
+	if (is_array ($hash) and isset ($hash['full']))
+		cli_print_hashes ($hash['full'], $pre = '  ');
 	$cdemu->clear_sector_access_list();
 	
 	// Dump each track
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) {
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
 		echo ("  Track $t\n");
-		if (is_array ($hash['track'][$track])) {
-			foreach ($hash['track'][$track] as $algo => $res)
-				echo ("    $algo: $res\n");
-			echo ("\n");
-		}
+		cli_print_hashes ($hash['track'][$track], $pre = '    ');
 		if (!$cdemu->set_track ($track))
 			die ("Error: Unexpected end of image!\n");
-		if ($cdemu->get_track_type() == 0) { // Audio
+		if ($cdemu->get_track_type() == CDEMU_TRACK_AUDIO)
 			dump_audio ($cdemu, $dir_out, "Track $t.cdda");
-		} else { // Data
-			if (!is_dir ($dir_out . "Track $t"))
-				mkdir ($dir_out . "Track $t", 0777, true);
-			dump_data ($cdemu, $dir_out, "Track $t/", "../../Track %%T.cdda", $hash_algos); // Returns track descriptor
-		}
+		else
+			dump_data ($cdemu, $dir_out, "Track $t/", "../../Track %%T.cdda", $hash_algos);
 	}
 	return (true);
 }
@@ -121,18 +111,15 @@ function dump_audio ($cdemu, $dir_out, $filename) {
 function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_algos = false) {
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
+	if (!is_dir ($dir_out . $track_dir))
+			mkdir ($dir_out . $track_dir, 0777, true);
 	if ($iso9660->init ($cdemu->get_track_start (true))) { // Process ISO9660 filesystem
 		if (!is_dir ($dir_out . $track_dir . "contents"))
 			mkdir ($dir_out . $track_dir . "contents", 0777, true);
-		
 		echo ("    System Area\n");
 		if (($sa = $iso9660->get_system_area()) != str_repeat ("\x00", strlen ($sa))) { // Check if system area is used
-			$hash = $iso9660->save_system_area ($dir_out . $track_dir . 'System Area.bin', $hash_algos);
-			if (is_array ($hash)) {
-				foreach ($hash as $algo => $res)
-					echo ("      $algo: $res\n");
-				echo ("\n");
-			}
+			$hash = $iso9660->save_system_area ($dir_out . $track_dir . 'SYSTEM.bin', $hash_algos);
+			cli_print_hashes ($hash);
 		}
 		unset ($sa);
 		
@@ -147,11 +134,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 			// File
 			$symdepth = ($cdda_symlink !== false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
 			$hash = $iso9660->save_file ($c, $dir_out . $track_dir . "contents" . $iso9660->format_fileid ($c), ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), $hash_algos, 'cli_dump_progress');
-			if (is_array ($hash)) {
-				foreach ($hash as $algo => $res)
-					echo ("      $algo: $res\n");
-				echo ("\n");
-			}
+			cli_print_hashes ($hash);
 		}
 		
 		// Dump any unaccessed sectors within the data track
@@ -160,25 +143,24 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 		foreach ($cdemu->get_sector_unaccessed_list ($t_start, $t_end) as $sector => $length) {
 			echo ("    LBA: $sector\n");
 			$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');
-			if (is_array ($hash)) {
-				foreach ($hash as $algo => $res)
-					echo ("      $algo: $res\n");
-				echo ("\n");
-			}
+			cli_print_hashes ($hash);
 		}
-	} else {
-		// Dump unrecognized data track
+	} else { // Dump unrecognized data track
 		$sector = $cdemu->get_track_start (true);
 		$length = $cdemu->get_track_length (true);
 		echo ("    LBA: $sector\n");
 		$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');
-		if (is_array ($hash)) {
-			foreach ($hash as $algo => $res)
-				echo ("      $algo: $res\n");
-			echo ("\n");
-		}
+		cli_print_hashes ($hash);
 	}
 	return (true); // Return track descriptor
+}
+
+function cli_print_hashes ($hash, $pre = '      ') {
+	if (is_array ($hash)) {
+		foreach ($hash as $algo => $res)
+			echo ("$pre$algo: $res\n");
+		echo ("\n");
+	}
 }
 
 function cli_dump_progress ($length, $pos) {
