@@ -116,7 +116,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 	if ($iso9660->init ($cdemu->get_track_start (true))) { // Process ISO9660 filesystem
 		if (!is_dir ($dir_out . $track_dir . "contents"))
 			mkdir ($dir_out . $track_dir . "contents", 0777, true);
-		echo ("    System Area\n");
+		echo ("    SYSTEM.bin\n");
 		if (($sa = $iso9660->get_system_area()) != str_repeat ("\x00", strlen ($sa))) { // Check if system area is used
 			$hash = $iso9660->save_system_area ($dir_out . $track_dir . 'SYSTEM.bin', $hash_algos);
 			cli_print_hashes ($hash);
@@ -131,17 +131,30 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 					mkdir ($dir_out . $track_dir . "contents" . $c, 0777, true);
 				continue;
 			}
-			// File
-			$symdepth = ($cdda_symlink !== false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
-			$hash = $iso9660->save_file ($c, $dir_out . $track_dir . "contents" . $iso9660->format_fileid ($c), ($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink), $hash_algos, 'cli_dump_progress');
-			cli_print_hashes ($hash);
+			if (($f_rec = $iso9660->find_file ($c)) === false) {
+				echo ("    Error: File not found!\n");
+				continue;
+			}
+			$file_out = $dir_out . $track_dir . "contents" . $iso9660->format_fileid ($c);
+			if (($info = $iso9660->file_read ($f_rec, $file_out, $hash_algos, 'cli_dump_progress')) === false) {
+				echo ("    Error: Image issues!\n");
+				continue;
+			}
+			if ($info['type'] == ISO9660_FILE_CDDA) { // Link to CDDA track
+				// TODO: Create symlink
+				
+				//$symdepth = ($cdda_symlink !== false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
+				//($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink)
+			}
+			if (isset ($info['hash']))
+				cli_print_hashes ($info['hash']);
 		}
 		
 		// Dump any unaccessed sectors within the data track
 		$t_start = $cdemu->get_track_start (true);
 		$t_end = $t_start + $cdemu->get_track_length (true) - 1;
 		foreach ($cdemu->get_sector_unaccessed_list ($t_start, $t_end) as $sector => $length) {
-			echo ("    LBA: $sector\n");
+			echo ("    LBA$sector.bin\n");
 			$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');
 			cli_print_hashes ($hash);
 		}
