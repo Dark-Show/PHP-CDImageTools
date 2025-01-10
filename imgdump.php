@@ -96,7 +96,7 @@ function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 		if ($cdemu->get_track_type() == CDEMU_TRACK_AUDIO)
 			dump_audio ($cdemu, $dir_out, "Track $t.cdda");
 		else
-			dump_data ($cdemu, $dir_out, "Track $t/", true, $hash_algos);
+			dump_data ($cdemu, $dir_out, "Track $t/", true, true, true, $hash_algos);
 	}
 	return (true);
 }
@@ -109,7 +109,7 @@ function dump_audio ($cdemu, $dir_out, $filename) {
 }
 
 // Dump data track to $dir_out
-function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_algos = false) {
+function dump_data ($cdemu, $dir_out, $track_dir, $trim_filename = false, $cdda_symlink = false, $xa_riff = false, $hash_algos = false) {
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
 	if (!is_dir ($dir_out . $track_dir))
@@ -137,9 +137,10 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 			}
 			$raw = false;
 			$header = false;
-			$file_out = $dir_out . $track_dir . "contents" . $iso9660->format_fileid ($c);
-			$file_out = $dir_out . $track_dir . "contents" . $c;
+			$file_out = $dir_out . $track_dir . "contents" . ($trim_filename ? $iso9660->format_fileid ($c) : $c);
 			if ($f_info['type'] == ISO9660_FILE_CDDA) { // Link to CDDA track
+				if (!$cdda_symlink)
+					continue;
 				$l_path = $file_out;
 				$l_name = basename ($l_path);
 				$l_path = substr ($l_path, 0, 0 - strlen ($l_name));
@@ -150,9 +151,11 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 				continue;
 			} else if ($f_info['type'] == ISO9660_FILE_XA) { // XA
 				$raw = true;
-				$h_riff_fmt_id = "CDXA";
-				$h_riff_fmt = $f_info['record']['extension']['xa']['data'] . "\x00\x00";
-				$header = "RIFF" . pack ('V', $f_info['length'] + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $f_info['length']);
+				if ($xa_riff) {
+					$h_riff_fmt_id = "CDXA";
+					$h_riff_fmt = $f_info['record']['extension']['xa']['data'] . "\x00\x00";
+					$header = "RIFF" . pack ('V', $f_info['length'] + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $f_info['length']);
+				}
 			}
 			if (($r_info = $iso9660->file_read ($f_info, $file_out, $raw, $header, $hash_algos, 'cli_dump_progress')) === false) {
 				echo ("    Error: Image issues!\n");
