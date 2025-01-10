@@ -131,23 +131,32 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 					mkdir ($dir_out . $track_dir . "contents" . $c, 0777, true);
 				continue;
 			}
-			if (($f_rec = $iso9660->find_file ($c)) === false) {
+			if (($f_info = $iso9660->find_file ($c)) === false) {
 				echo ("    Error: File not found!\n");
 				continue;
 			}
-			$file_out = $dir_out . $track_dir . "contents" . $iso9660->format_fileid ($c);
-			if (($info = $iso9660->file_read ($f_rec, $file_out, $hash_algos, 'cli_dump_progress')) === false) {
-				echo ("    Error: Image issues!\n");
-				continue;
-			}
-			if ($info['type'] == ISO9660_FILE_CDDA) { // Link to CDDA track
+			$raw = false;
+			$header = false;
+			if ($f_info['type'] == ISO9660_FILE_CDDA) { // Link to CDDA track
 				// TODO: Create symlink
 				
 				//$symdepth = ($cdda_symlink !== false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
 				//($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink)
+				continue;
+				
+			} else if ($f_info['type'] == ISO9660_FILE_XA) { // XA
+				$raw = true;
+				$h_riff_fmt_id = "CDXA";
+				$h_riff_fmt = $f_info['record']['extension']['xa']['data'] . "\x00\x00";
+				$header = "RIFF" . pack ('V', $f_info['length'] + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $f_info['length']);
 			}
-			if (isset ($info['hash']))
-				cli_print_hashes ($info['hash']);
+			$file_out = $dir_out . $track_dir . "contents" . $iso9660->format_fileid ($c);
+			if (($r_info = $iso9660->file_read ($f_info, $file_out, $raw, $header, $hash_algos, 'cli_dump_progress')) === false) {
+				echo ("    Error: Image issues!\n");
+				continue;
+			}
+			if (isset ($r_info['hash']))
+				cli_print_hashes ($r_info['hash']);
 		}
 		
 		// Dump any unaccessed sectors within the data track

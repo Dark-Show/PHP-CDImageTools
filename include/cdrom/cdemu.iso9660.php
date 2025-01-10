@@ -241,41 +241,39 @@ class ISO9660 {
 		}
 		if (!$f)
 			return ($fail); // File not found
-		return ($file);
+		$f_info = array();
+		$f_info['record'] = $file;
+		$f_info['type'] = ISO9660_FILE; // Regular File
+		$f_info['lba'] = $file['ex_loc_be']; // Address
+		$f_info['length'] = $file['data_len_be']; // Bytes
+		if (isset ($file['extension']['xa'])) {
+			if ($file['extension']['xa']['attributes']['cdda']) { // Note: For CDDA referenced files, seek backwards 2sec and add 2sec to the file_length
+				$f_info['type'] = ISO9660_FILE_CDDA; // CDDA Link
+				$f_info['track'] = $this->o_cdemu->get_track_by_sector ($file['ex_loc_be'] - 150); // Track
+				$f_info['lba'] = $file['ex_loc_be'] - 150; // Address
+				$f_info['length'] = (($file['data_len_be'] / 2048) + 150) * 2352; // Bytes
+				return ($info);
+			} else if ($file['extension']['xa']['attributes']['form2'] or $file['extension']['xa']['attributes']['interleaved']) {
+				$f_info['type'] = ISO9660_FILE_XA; // Contains Mode 2 Sectors
+				$f_info['length'] = ($file['data_len_be'] / 2048) * 2352; // Bytes
+			}
+		}
+		return ($f_info);
 	}
 	
-	// Read file data located at file record $file found using find_file
+	// Read file data located at file record $f_info found using find_file
 	//   $file_out: If set data is saved and infomation returned, if not set the data is returned inside information array
 	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b')
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
 	// Note: If ISO9660 file version > 1 $file_out is opened with 'a'
-	public function &file_read ($file, $file_out = false, $hash_algos = false, $cb_progress = false) {
+	public function &file_read ($f_info, $file_out = false, $raw = false, $header = false, $hash_algos = false, $cb_progress = false) {
 		$fail = false;
-		$raw = false;
 		$h_riff = false;
 		$length = 0;
-		$info = array();
+		$r_info = array();
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
-		$info['type'] = ISO9660_FILE; // Regular File
-		$info['lba'] = $file['ex_loc_be']; // Address
-		$info['length'] = $file['data_len_be']; // Bytes
-		if (isset ($file['extension']['xa'])) {
-			if ($file['extension']['xa']['attributes']['cdda']) { // Note: For CDDA referenced files, seek backwards 2sec and add 2sec to the file_length
-				$info['type'] = ISO9660_FILE_CDDA; // CDDA Link
-				$info['track'] = $this->o_cdemu->get_track_by_sector ($file['ex_loc_be'] - 150); // Track
-				$info['lba'] = $file['ex_loc_be'] - 150; // Address
-				$info['length'] = (($file['data_len_be'] / 2048) + 150) * 2352; // Bytes
-				return ($info);
-			} else if ($file['extension']['xa']['attributes']['form2'] or $file['extension']['xa']['attributes']['interleaved']) {
-				$info['type'] = ISO9660_FILE_XA; // Contains Mode 2 Sectors
-				$info['length'] = ($file['data_len_be'] / 2048) * 2352; // Bytes
-				$raw = true;
-				$h_riff = true; // RIFF XA header required
-				$h_riff_fmt_id = "CDXA";
-				$h_riff_fmt = $file['extension']['xa']['data'] . "\x00\x00";
-			}
-		}
+		
 		if ($hash_algos !== false) {
 			if (is_string ($hash_algos))
 				$hash_algos = array ($hash_algos);
@@ -286,28 +284,28 @@ class ISO9660 {
 				}
 			}
 			foreach ($hash_algos as $algo)
-				$info['hash'][$algo] = hash_init ($algo); // Init hash
+				$r_info['hash'][$algo] = hash_init ($algo); // Init hash
 		}
-		$info['data'] = '';
-		if ($h_riff) {
-			$info['data'] = "RIFF" . pack ('V', $info['length'] + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $info['length']);
+		$r_info['data'] = '';
+		if ($header !== false and is_string ($header)) {
+			$r_info['data'] = $header;
 			if ($hash_algos !== false) {
 				foreach ($hash_algos as $algo)
-					hash_update ($info['hash'][$algo], $info['data']);
+					hash_update ($r_info['hash'][$algo], $r_info['data']);
 			}
 		}
 		if ($file_out !== false) {
-			$info['file_out'] = $file_out;
+			$r_info['file_out'] = $file_out;
 			$fhm = 'w';
-			if (($fver = $this->get_fileid_version ($file['file_id'])) !== false and $fver > 1) // Handle file versions
+			if (($fver = $this->get_fileid_version ($f_info['record']['file_id'])) !== false and $fver > 1) // Handle file versions
 				$fhm = 'a';
 			$fh = fopen ($file_out, $fhm);
 		}
-		if (($this->o_cdemu->seek ($file['ex_loc_be'])) === false)
+		if (($this->o_cdemu->seek ($f_info['lba'])) === false)
 			return ($fail);
 		if ($cb_progress !== false)
-			call_user_func ($cb_progress, $info['length'], $length);
-		while ($length < $info['length']) {
+			call_user_func ($cb_progress, $f_info['length'], $length);
+		while ($length < $f_info['length']) {
 			if (($data = $this->o_cdemu->read()) === false) {
 				if ($file_out !== false)
 					fclose ($fh);
@@ -315,35 +313,36 @@ class ISO9660 {
 			}
 			if ($raw) {
 				$length += strlen ($data['sector']);
-				$info['data'] .= $data['sector'];
-			} else if ($info['length'] - $length < strlen ($data['data'])) {
-				$data['data'] = substr ($data['data'], 0, $info['length'] - $length);
+				$r_info['data'] .= $data['sector'];
+			} else if ($f_info['length'] - $length < strlen ($data['data'])) {
+				$data['data'] = substr ($data['data'], 0, $f_info['length'] - $length);
 				$length += strlen ($data['data']);
-				$info['data'] .= $data['data'];
+				$r_info['data'] .= $data['data'];
 			} else {
 				$length += strlen ($data['data']);
-				$info['data'] .= $data['data'];
+				$r_info['data'] .= $data['data'];
 			}
 			if ($file_out !== false) {
-				fwrite ($fh, $info['data']);
-				$info['data'] = '';
+				fwrite ($fh, $r_info['data']);
+				$r_info['data'] = '';
 			}
 			if ($hash_algos !== false) {
-				foreach ($info['hash'] as $hash)
+				foreach ($r_info['hash'] as $hash)
 					hash_update ($hash, ($raw ? $data['sector'] : $data['data']));
 			}
 			if ($cb_progress !== false)
-				call_user_func ($cb_progress, $info['length'], $length);
+				call_user_func ($cb_progress, $f_info['length'], $length);
 		}
+		$r_info['length'] = $length; // Read length
 		if ($file_out !== false) {
 			fclose ($fh);
-			unset ($info['data']);
+			unset ($r_info['data']);
 		}
 		if ($hash_algos !== false) {
-			foreach ($info['hash'] as $algo => $hash)
-				$info['hash'][$algo] = hash_final ($hash, false);
+			foreach ($r_info['hash'] as $algo => $hash)
+				$r_info['hash'][$algo] = hash_final ($hash, false);
 		}
-		return ($info);
+		return ($r_info);
 	}
 	
 	private function process_volume_descriptor() {
