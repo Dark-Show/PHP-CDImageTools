@@ -561,6 +561,8 @@ class CDEMU {
 	public function hash_image ($hash_algos, $cb_progress = false) {
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
+		if ($hash_algos === false)
+			return (false);
 		if (is_string ($hash_algos))
 			$hash_algos = array ($hash_algos);
 		foreach ($hash_algos as $algo) { // Verify hash format support

@@ -220,7 +220,7 @@ class ISO9660 {
 		return ($fl);
 	}
 	
-	// Returns directory record for file located at $path
+	// Returns directory record and parsed file information for file located at $path
 	public function &find_file ($path) {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);
@@ -252,7 +252,6 @@ class ISO9660 {
 				$f_info['track'] = $this->o_cdemu->get_track_by_sector ($file['ex_loc_be'] - 150); // Track
 				$f_info['lba'] = $file['ex_loc_be'] - 150; // Address
 				$f_info['length'] = (($file['data_len_be'] / 2048) + 150) * 2352; // Bytes
-				return ($info);
 			} else if ($file['extension']['xa']['attributes']['form2'] or $file['extension']['xa']['attributes']['interleaved']) {
 				$f_info['type'] = ISO9660_FILE_XA; // Contains Mode 2 Sectors
 				$f_info['length'] = ($file['data_len_be'] / 2048) * 2352; // Bytes
@@ -263,12 +262,13 @@ class ISO9660 {
 	
 	// Read file data located at file record $f_info found using find_file
 	//   $file_out: If set data is saved and infomation returned, if not set the data is returned inside information array
+	//   $raw: Read full sectors
+	//   $header: If set and is string, hashed and prepended to output data
 	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b')
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
 	// Note: If ISO9660 file version > 1 $file_out is opened with 'a'
 	public function &file_read ($f_info, $file_out = false, $raw = false, $header = false, $hash_algos = false, $cb_progress = false) {
 		$fail = false;
-		$h_riff = false;
 		$length = 0;
 		$r_info = array();
 		if (!is_callable ($cb_progress))

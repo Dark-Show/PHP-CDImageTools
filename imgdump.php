@@ -89,13 +89,14 @@ function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) {
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
 		echo ("  Track $t\n");
-		cli_print_hashes ($hash['track'][$track], $pre = '    ');
+		if (isset ($hash['track'][$track]))
+			cli_print_hashes ($hash['track'][$track], $pre = '    ');
 		if (!$cdemu->set_track ($track))
 			die ("Error: Unexpected end of image!\n");
 		if ($cdemu->get_track_type() == CDEMU_TRACK_AUDIO)
 			dump_audio ($cdemu, $dir_out, "Track $t.cdda");
 		else
-			dump_data ($cdemu, $dir_out, "Track $t/", "../../Track %%T.cdda", $hash_algos);
+			dump_data ($cdemu, $dir_out, "Track $t/", true, $hash_algos);
 	}
 	return (true);
 }
@@ -122,7 +123,6 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 			cli_print_hashes ($hash);
 		}
 		unset ($sa);
-		
 		$contents = $iso9660->get_content ('/', true, true); // List root recursively
 		foreach ($contents as $c => $meta) { // Save contents to disk
 			echo ("    $c\n");
@@ -137,20 +137,23 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 			}
 			$raw = false;
 			$header = false;
+			$file_out = $dir_out . $track_dir . "contents" . $iso9660->format_fileid ($c);
+			$file_out = $dir_out . $track_dir . "contents" . $c;
 			if ($f_info['type'] == ISO9660_FILE_CDDA) { // Link to CDDA track
-				// TODO: Create symlink
-				
-				//$symdepth = ($cdda_symlink !== false and $cdda_symlink[0] != "/") ? str_repeat ('../', count (explode ('/', $c)) - 2) : ''; // Amend relative symlinks
-				//($cdda_symlink === false ? $cdda_symlink : $symdepth . $cdda_symlink)
+				$l_path = $file_out;
+				$l_name = basename ($l_path);
+				$l_path = substr ($l_path, 0, 0 - strlen ($l_name));
+				$target = symlink_relative_path ($dir_out, $l_path) . "Track " . str_pad ($f_info['track'], 2, '0', STR_PAD_LEFT) . ".cdda";
+				if (is_file ($l_path . $l_name))
+					unlink ($l_path . $l_name);
+				symlink ($target, $l_path . $l_name); // Create symlink to CDDA track
 				continue;
-				
 			} else if ($f_info['type'] == ISO9660_FILE_XA) { // XA
 				$raw = true;
 				$h_riff_fmt_id = "CDXA";
 				$h_riff_fmt = $f_info['record']['extension']['xa']['data'] . "\x00\x00";
 				$header = "RIFF" . pack ('V', $f_info['length'] + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $f_info['length']);
 			}
-			$file_out = $dir_out . $track_dir . "contents" . $iso9660->format_fileid ($c);
 			if (($r_info = $iso9660->file_read ($f_info, $file_out, $raw, $header, $hash_algos, 'cli_dump_progress')) === false) {
 				echo ("    Error: Image issues!\n");
 				continue;
@@ -175,6 +178,31 @@ function dump_data ($cdemu, $dir_out, $track_dir, $cdda_symlink = false, $hash_a
 		cli_print_hashes ($hash);
 	}
 	return (true); // Return track descriptor
+}
+
+function symlink_relative_path ($target, $link) {
+	if (!is_string ($target) or !is_string ($link))
+		return (false);
+	$l_sub = (substr ($link, -1) == '/') ? 1 : 0;
+	$link = explode ('/', $link);
+	$target = explode ('/', $target);
+	$r_target = '';
+	$t = true;
+	$t_pos = 0; // Trim
+	for ($i = 0; $i < count ($link) - $l_sub; $i++) {
+		if ($t and $link[$i] == $target[$i]) {
+			$t_pos = $i + 1;
+			continue;
+		} else if ($t and $link[$i] != $target[$i])
+			$t = false;
+		$r_target .= '../';
+	}
+	for ($i = $t_pos; $i < count ($target); $i++) {
+		$r_target .= $target[$i];
+		if ($i != count ($target) - 1)
+			$r_target .= '/';
+	}
+	return ($r_target);
 }
 
 function cli_print_hashes ($hash, $pre = '      ') {
