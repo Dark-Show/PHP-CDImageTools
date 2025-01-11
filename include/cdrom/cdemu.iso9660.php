@@ -127,18 +127,12 @@ class ISO9660 {
 		return ($ver);
 	}
 	
-	// Returns System Area (Sectors 0 - 15)
-	public function get_system_area() {
-		return ($this->save_system_area (false, false));
-	}
-	
-	// Hashes System Area
-	public function hash_system_area ($hash_algos) {
-		return ($this->save_system_area (false, $hash_algos));
-	}
-	
-	// Save System Area to $file
-	public function save_system_area ($file, $hash_algos = false) {
+	// Read System Area from first 16 sectors of filesystem
+	//   $file_out: If set data is saved and infomation returned, if not set the data is returned inside information array
+	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b')
+	public function read_system_area ($file_out = false, $hash_algos = false) {
+		$fail = false;
+		$r_info = array();
 		if ($hash_algos !== false) {
 			if (is_string ($hash_algos))
 				$hash_algos = array ($hash_algos);
@@ -147,35 +141,33 @@ class ISO9660 {
 					if ($sup_algo == $algo)
 						continue 2;
 				}
-				return (false); // Error: Hash not found
 			}
-			$hashes = array();
 			foreach ($hash_algos as $algo)
-				$hashes[$algo] = hash_init ($algo); // Init hash
+				$r_info['hash'][$algo] = hash_init ($algo); // Init hash
 		}
-		
-		$system_area = '';
+		$r_info['lba'] = $this->iso_lba;
+		$r_info['data'] = '';
 		for ($i = 0; $i < 16; $i++) {
 			$data = $this->o_cdemu->read ($this->iso_lba + $i);
 			if (!isset ($data['data']))
-				return (false);
-			$system_area .= $data['data'];
+				return ($fail);
+			$r_info['data'] .= $data['data'];
 			if ($hash_algos !== false) {
-				foreach ($hashes as $hash)
+				foreach ($r_info['hash'] as $hash)
 					hash_update ($hash, $data['data']);
 			}
 		}
-		
-		if ($file !== false and file_put_contents ($file, $system_area) === false)
-			return (false);
+		$r_info['length'] = strlen ($r_info['data']);
 		if ($hash_algos !== false) {
-			foreach ($hashes as $algo => $hash)
-				$hashes[$algo] = hash_final ($hash, false);
-			return ($hashes);
+			foreach ($r_info['hash'] as $algo => $hash)
+				$r_info['hash'][$algo] = hash_final ($hash, false);
 		}
-		if ($file === false)
-			return ($system_area);
-		return (true);
+		if ($file_out !== false) {
+			if (file_put_contents ($file_out, $r_info['data']) === false)
+				return ($fail);
+			unset ($r_info['data']);
+		}
+		return ($r_info);
 	}
 	
 	// Array of files and directories
@@ -559,7 +551,7 @@ class ISO9660 {
 		$dr['fi_len']         = ord (substr ($data, 32, 1)); // Length of File Identifier
 		$dr['file_id']        = substr ($data, 33, $dr['fi_len']); // File Identifier
 		if ($dr['fi_len'] % 2 != 0)
-			$dr['fi_pad'] = substr ($data, 33 + $dr['fi_len'], 1);
+			$dr['fi_pad']     = substr ($data, 33 + $dr['fi_len'], 1);
 		$dr['system_use']     = substr ($data, 34 + $dr['fi_len'] - ($dr['fi_len'] % 2 != 0 ? 1 : 0), ($dr['dr_len'] + ($dr['fi_len'] % 2 != 0 ? 1 : 0) - 34 - $dr['fi_len'])); // System Use
 		$dr['extension'] = array();
 		if (substr ($dr['system_use'], 6, 2) == "XA") { // Detect XA

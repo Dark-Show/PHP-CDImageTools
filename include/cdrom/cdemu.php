@@ -59,13 +59,11 @@ class CDEMU {
 					$type = strtolower ($e_line[count ($e_line) - 1]); // File type
 					if ($type != "binary")
 						return (false);
-					
 					if (isset ($file))
 						$multifile = true;
 					$file = trim (substr ($line, 5, strlen ($line) - (strlen ($type) + 6))); // Parse file from between FILE and TYPE
 					if (($qc = substr ($file, 0, 1)) == '"' or $qc == "'")
 						$file = substr ($file, 1, strlen ($file) - 2);
-					
 					if (!file_exists ($path . $file)) { // File not found
 						$ff = false; // File found
 						if (file_exists ($path . basename ($file))) // Try stripping any directories

@@ -118,11 +118,8 @@ function dump_data ($cdemu, $dir_out, $track_dir, $trim_filename = false, $cdda_
 		if (!is_dir ($dir_out . $track_dir . "contents"))
 			mkdir ($dir_out . $track_dir . "contents", 0777, true);
 		echo ("    SYSTEM.bin\n");
-		if (($sa = $iso9660->get_system_area()) != str_repeat ("\x00", strlen ($sa))) { // Check if system area is used
-			$hash = $iso9660->save_system_area ($dir_out . $track_dir . 'SYSTEM.bin', $hash_algos);
-			cli_print_hashes ($hash);
-		}
-		unset ($sa);
+		$r_info = $iso9660->read_system_area ($dir_out . $track_dir . 'SYSTEM.bin', $hash_algos);
+		cli_print_hashes ($r_info['hash']);
 		$contents = $iso9660->get_content ('/', true, true); // List root recursively
 		foreach ($contents as $c => $meta) { // Save contents to disk
 			echo ("    $c\n");
@@ -141,9 +138,8 @@ function dump_data ($cdemu, $dir_out, $track_dir, $trim_filename = false, $cdda_
 			if ($f_info['type'] == ISO9660_FILE_CDDA) { // Link to CDDA track
 				if (!$cdda_symlink)
 					continue;
-				$l_path = $file_out;
-				$l_name = basename ($l_path);
-				$l_path = substr ($l_path, 0, 0 - strlen ($l_name));
+				$l_name = basename ($file_out);
+				$l_path = substr ($file_out, 0, 0 - strlen ($l_name));
 				$target = symlink_relative_path ($dir_out, $l_path) . "Track " . str_pad ($f_info['track'], 2, '0', STR_PAD_LEFT) . ".cdda";
 				if (is_file ($l_path . $l_name))
 					unlink ($l_path . $l_name);
