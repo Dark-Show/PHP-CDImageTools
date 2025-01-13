@@ -128,9 +128,9 @@ class ISO9660 {
 	}
 	
 	// Read System Area from first 16 sectors of filesystem
-	//   $file_out: If set data is saved and infomation returned, if not set the data is returned inside information array
+	//   $file_out: If set, data is saved and infomation returned, if not set the data is returned inside information array
 	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b')
-	public function read_system_area ($file_out = false, $hash_algos = false) {
+	public function &read_system_area ($file_out = false, $hash_algos = false) {
 		$fail = false;
 		$r_info = array();
 		if ($hash_algos !== false) {
@@ -253,7 +253,7 @@ class ISO9660 {
 	}
 	
 	// Read file data located at file record $f_info found using find_file
-	//   $file_out: If set data is saved and infomation returned, if not set the data is returned inside information array
+	//   $file_out: If set data is saved and information returned, if not set the data is returned inside information array
 	//   $raw: Read full sectors
 	//   $header: If set and is string, hashed and prepended to output data
 	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b')
@@ -551,7 +551,7 @@ class ISO9660 {
 		$dr['fi_len']         = ord (substr ($data, 32, 1)); // Length of File Identifier
 		$dr['file_id']        = substr ($data, 33, $dr['fi_len']); // File Identifier
 		if ($dr['fi_len'] % 2 != 0)
-			$dr['fi_pad']     = substr ($data, 33 + $dr['fi_len'], 1);
+			$dr['fi_pad'] = substr ($data, 33 + $dr['fi_len'], 1);
 		$dr['system_use']     = substr ($data, 34 + $dr['fi_len'] - ($dr['fi_len'] % 2 != 0 ? 1 : 0), ($dr['dr_len'] + ($dr['fi_len'] % 2 != 0 ? 1 : 0) - 34 - $dr['fi_len'])); // System Use
 		$dr['extension'] = array();
 		if (substr ($dr['system_use'], 6, 2) == "XA") { // Detect XA
