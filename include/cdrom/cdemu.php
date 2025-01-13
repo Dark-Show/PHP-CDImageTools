@@ -505,8 +505,14 @@ class CDEMU {
 	
 	// Header to ATime
 	public function header2msf ($h) {
-		$minutes = str_pad (ord (substr ($h, 0, 1)), 2, "0", STR_PAD_LEFT);
-		$seconds = str_pad (ord ((int)substr ($h, 1, 1) - 2), 2, "0", STR_PAD_LEFT);
+		$minutes = ord (substr ($h, 0, 1));
+		$seconds = ord ((int)substr ($h, 1, 1)) - 2;
+		if ($seconds < 0) {
+			$minutes--;
+			$seconds = 60 + $seconds;
+		}
+		$minutes = str_pad ($minutes, 2, "0", STR_PAD_LEFT);
+		$seconds = str_pad ($seconds, 2, "0", STR_PAD_LEFT);
 		$frames = str_pad (ord (substr ($h, 2, 1)), 2, "0", STR_PAD_LEFT);
 		return ("$minutes:$seconds:$frames");
 	}
@@ -514,7 +520,11 @@ class CDEMU {
 	// Header to Logical Block Address
 	public function header2lba ($h) {
 		$minutes = ord (substr ($h, 0, 1));
-		$seconds = ord ((int)substr ($h, 1, 1) - 2);
+		$seconds = ord ((int)substr ($h, 1, 1)) - 2;
+		if ($seconds < 0) {
+			$minutes--;
+			$seconds = 60 + $seconds;
+		}
 		$frames = ord (substr ($h, 2, 1));
 		return (75 * ($minutes * 60 + $seconds) + $frames);
 	}
@@ -533,6 +543,10 @@ class CDEMU {
 		$time = explode (':', $t);
 		$minutes = (int)$time[0];
 		$seconds = (int)$time[1] + 2;
+		if ($seconds > 59) {
+			$seconds = 0;
+			$minutes++;
+		}
 		$frames = (int)$time[2];
 		return (chr ($minutes) . chr ($seconds) . chr ($frames));
 	}
@@ -552,6 +566,10 @@ class CDEMU {
 		$frames = $s - ($seconds * 75);
 		$minutes = intval ($seconds / 60);
 		$seconds = ($seconds - ($minutes * 60)) + 2;
+		if ($seconds > 59) {
+			$seconds = 0;
+			$minutes++;
+		}
 		return (chr ($minutes) . chr ($seconds)  . chr ($frames));
 	}
 	
