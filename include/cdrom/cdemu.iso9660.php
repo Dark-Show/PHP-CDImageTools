@@ -177,19 +177,19 @@ class ISO9660 {
 		$files = $this->iso_dr; // Files
 		$dir = explode ('/', $dir);
 		foreach ($dir as $d) { // Loop through $dir, fill in $cd and get records
-			if ($d != null) {
-				$cd[] = $d;
-				$f = false;
-				foreach ($files as $file) { // Seek Files Records
-					if ($file['file_flag']['directory'] and $file['file_id'] == $d) {
-						$f = true;
-						$files = $file['contents']; // Update files
-						break;
-					}
+			if ($d == null)
+				continue;
+			$cd[] = $d;
+			$f = false;
+			foreach ($files as $file) { // Seek Files Records
+				if ($file['file_flag']['directory'] and $file['file_id'] == $d) {
+					$f = true;
+					$files = $file['contents']; // Update files
+					break;
 				}
-				if (!$f) // File not found
-					return (false);
 			}
+			if (!$f) // File not found
+				return (false);
 		}
 		$cd[] = '';
 		foreach ($files as $file) {
@@ -239,14 +239,14 @@ class ISO9660 {
 		$f_info['lba'] = $file['ex_loc_be']; // Address
 		$f_info['length'] = $file['data_len_be']; // Bytes
 		if (isset ($file['extension']['xa'])) {
-			if ($file['extension']['xa']['attributes']['cdda']) { // Note: For CDDA referenced files, seek backwards 2sec and add 2sec to the file_length
+			if ($file['extension']['xa']['attributes']['cdda']) {
 				$f_info['type'] = ISO9660_FILE_CDDA; // CDDA Link
 				$f_info['track'] = $this->o_cdemu->get_track_by_sector ($file['ex_loc_be'] - 150); // Track
-				$f_info['lba'] = $file['ex_loc_be'] - 150; // Address
-				$f_info['length'] = (($file['data_len_be'] / 2048) + 150) * 2352; // Bytes
+				$f_info['lba'] -= 150; // Adjust address backwards 2 seconds
+				$f_info['length'] = (($file['data_len_be'] / 2048) + 150) * 2352; // Convert sector length + 2 seconds to bytes bytes
 			} else if ($file['extension']['xa']['attributes']['form2'] or $file['extension']['xa']['attributes']['interleaved']) {
-				$f_info['type'] = ISO9660_FILE_XA; // Contains Mode 2 Sectors
-				$f_info['length'] = ($file['data_len_be'] / 2048) * 2352; // Bytes
+				$f_info['type'] = ISO9660_FILE_XA; // Contains mode2-xa sectors
+				$f_info['length'] = ($file['data_len_be'] / 2048) * 2352; // Convert sector length to bytes bytes
 			}
 		}
 		return ($f_info);
@@ -554,30 +554,34 @@ class ISO9660 {
 			$dr['fi_pad'] = substr ($data, 33 + $dr['fi_len'], 1);
 		$dr['system_use']     = substr ($data, 34 + $dr['fi_len'] - ($dr['fi_len'] % 2 != 0 ? 1 : 0), ($dr['dr_len'] + ($dr['fi_len'] % 2 != 0 ? 1 : 0) - 34 - $dr['fi_len'])); // System Use
 		$dr['extension'] = array();
-		if (substr ($dr['system_use'], 6, 2) == "XA") { // Detect XA
-			if (!isset ($this->iso_ext['xa']))
-				$this->iso_ext['xa'] = 1;
-			$xa = array();
-			$xa['data']                         = substr ($dr['system_use'], 0, 14);
-			$xa['owner']                        = substr ($dr['system_use'], 0, 4);
-			$xa['permissions'] = array();
-			$xa['permissions']['owner_read']    = (ord (substr ($dr['system_use'], 5, 1)) >> 0) & 0x01;
-			$xa['permissions']['owner_execute'] = (ord (substr ($dr['system_use'], 5, 1)) >> 2) & 0x01;
-			$xa['permissions']['group_read']    = (ord (substr ($dr['system_use'], 5, 1)) >> 4) & 0x01;
-			$xa['permissions']['group_execute'] = (ord (substr ($dr['system_use'], 5, 1)) >> 6) & 0x01;
-			$xa['permissions']['world_read']    = (ord (substr ($dr['system_use'], 4, 1)) >> 0) & 0x01;
-			$xa['permissions']['world_execute'] = (ord (substr ($dr['system_use'], 4, 1)) >> 2) & 0x01;
-			$xa['attributes'] = array();
-			$xa['attributes']['form1']          = (ord (substr ($dr['system_use'], 4, 1)) >> 3) & 0x01;
-			$xa['attributes']['form2']          = (ord (substr ($dr['system_use'], 4, 1)) >> 4) & 0x01;
-			$xa['attributes']['interleaved']    = (ord (substr ($dr['system_use'], 4, 1)) >> 5) & 0x01;
-			$xa['attributes']['cdda']           = (ord (substr ($dr['system_use'], 4, 1)) >> 6) & 0x01;
-			$xa['attributes']['directory']      = (ord (substr ($dr['system_use'], 4, 1)) >> 7) & 0x01;
-			$xa['file_number']                  = ord (substr ($dr['system_use'], 8, 1));
-			$xa['reserved']                     = substr ($dr['system_use'], 9, 4);
-			$dr['extension']['xa'] = $xa;
-		}
+		$this->directory_record_xa ($dr); // Detect and process XA
 		return ($dr);
+	}
+	
+	private function directory_record_xa (&$dr) {
+		if (substr ($dr['system_use'], 6, 2) != "XA")
+			return;
+		if (!isset ($this->iso_ext['xa']))
+			$this->iso_ext['xa'] = 1;
+		$xa = array();
+		$xa['data']                         = substr ($dr['system_use'], 0, 14);
+		$xa['owner']                        = substr ($dr['system_use'], 0, 4);
+		$xa['permissions'] = array();
+		$xa['permissions']['owner_read']    = (ord (substr ($dr['system_use'], 5, 1)) >> 0) & 0x01;
+		$xa['permissions']['owner_execute'] = (ord (substr ($dr['system_use'], 5, 1)) >> 2) & 0x01;
+		$xa['permissions']['group_read']    = (ord (substr ($dr['system_use'], 5, 1)) >> 4) & 0x01;
+		$xa['permissions']['group_execute'] = (ord (substr ($dr['system_use'], 5, 1)) >> 6) & 0x01;
+		$xa['permissions']['world_read']    = (ord (substr ($dr['system_use'], 4, 1)) >> 0) & 0x01;
+		$xa['permissions']['world_execute'] = (ord (substr ($dr['system_use'], 4, 1)) >> 2) & 0x01;
+		$xa['attributes'] = array();
+		$xa['attributes']['form1']          = (ord (substr ($dr['system_use'], 4, 1)) >> 3) & 0x01;
+		$xa['attributes']['form2']          = (ord (substr ($dr['system_use'], 4, 1)) >> 4) & 0x01;
+		$xa['attributes']['interleaved']    = (ord (substr ($dr['system_use'], 4, 1)) >> 5) & 0x01;
+		$xa['attributes']['cdda']           = (ord (substr ($dr['system_use'], 4, 1)) >> 6) & 0x01;
+		$xa['attributes']['directory']      = (ord (substr ($dr['system_use'], 4, 1)) >> 7) & 0x01;
+		$xa['file_number']                  = ord (substr ($dr['system_use'], 8, 1));
+		$xa['reserved']                     = substr ($dr['system_use'], 9, 4);
+		$dr['extension']['xa'] = $xa;
 	}
 	
 	private function iso_date_time ($data) {
@@ -602,10 +606,10 @@ class ISO9660 {
 		} else
 			return (false);
 		
-		$gmt = -12.00 + ($dt['gmt'] * 0.25);
+		$gmt = $dt['gmt'] * 0.25 - 12.00;
 		$gmt = ($gmt > 0 ? "+" : "-") .
-		             str_pad (abs (floor ($gmt)), 2, '0', STR_PAD_LEFT) . ":" .
-		             str_pad ((($gmt - floor ($gmt)) * 4 * 15), 2, '0', STR_PAD_LEFT);
+		        str_pad (abs (floor ($gmt)), 2, '0', STR_PAD_LEFT) . ":" .
+		        str_pad ((($gmt - floor ($gmt)) * 4 * 15), 2, '0', STR_PAD_LEFT);
 		
 		$dt['string_format'] = "Y-n-j G:i:s" . (isset ($dt['hsec']) ? ".v" : "") . "P";
 		$dt['string'] = $dt['year'] . "-" .
