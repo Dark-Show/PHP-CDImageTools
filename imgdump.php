@@ -74,7 +74,7 @@ function cli_process_argv ($argv) {
 				die ("Error: Failed to load bin file '$b'\n");
 		}
 	}
-	dump_image ($cdemu, $dir_out, ['crc32b', 'sha256', 'md5']);
+	dump_image ($cdemu, $dir_out, false);
 	$cdemu->eject(); // Eject Disk
 }
 
@@ -112,14 +112,17 @@ function dump_audio ($cdemu, $dir_out, $filename) {
 function dump_data ($cdemu, $dir_out, $track_dir, $trim_filename = false, $cdda_symlink = false, $xa_riff = false, $hash_algos = false) {
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
+	$cdemu->disable_sector_access_list();
 	if (!is_dir ($dir_out . $track_dir))
-			mkdir ($dir_out . $track_dir, 0777, true);
+		mkdir ($dir_out . $track_dir, 0777, true);
 	if ($iso9660->init ($cdemu->get_track_start (true))) { // Process ISO9660 filesystem
+		$cdemu->enable_sector_access_list();
 		if (!is_dir ($dir_out . $track_dir . "contents"))
 			mkdir ($dir_out . $track_dir . "contents", 0777, true);
 		echo ("    SYSTEM.bin\n");
 		$r_info = $iso9660->read_system_area ($dir_out . $track_dir . 'SYSTEM.bin', $hash_algos);
-		cli_print_hashes ($r_info['hash']);
+		if (isset ($r_info['hash']))
+			cli_print_hashes ($r_info['hash']);
 		$contents = $iso9660->get_content ('/', true, true); // List root recursively
 		foreach ($contents as $c => $meta) { // Save contents to disk
 			echo ("    $c\n");
@@ -170,9 +173,10 @@ function dump_data ($cdemu, $dir_out, $track_dir, $trim_filename = false, $cdda_
 			cli_print_hashes ($hash);
 		}
 	} else { // Dump unrecognized data track
+		$cdemu->enable_sector_access_list();
 		$sector = $cdemu->get_track_start (true);
 		$length = $cdemu->get_track_length (true);
-		echo ("    LBA: $sector\n");
+		echo ("    LBA$sector.bin\n");
 		$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');
 		cli_print_hashes ($hash);
 	}
