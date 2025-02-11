@@ -14,7 +14,7 @@
 //   + Sector types:
 //     + Mode 0 (2336b: Zeros)
 //     + Mode 1 (2048b)
-//     + Mode 2 (2336b)
+//     + Mode 2 (2336b: Formless)
 //     + Mode 2 XA Form 1 (2048b)
 //     + Mode 2 XA Form 2 (2324b)
 //////////////////////////////////////
@@ -29,6 +29,7 @@ class CDEMU {
 	private $track = 0; // Current track
 	private $sector = 0; // Current sector
 	private $sect_list = array(); // Accessed sector list
+	private $sect_list_en = true; // Accessed sector list control
 	private $lut_edc = array(); // EDC LUT
 	private $lut_ecc_b = array(); // ECC LUT
 	private $lut_ecc_f = array(); // ECC LUT
@@ -266,7 +267,8 @@ class CDEMU {
 		// Note: If we overflow past EOF we will return false on the next read
 		if (isset ($this->buffer[$this->sector]) and $this->buffer[$this->sector] !== false) {
 			$sector = $this->buffer[$this->sector]; // Save sector
-			$this->sect_list[$this->sector] = isset ($this->sect_list[$this->sector]) ? $this->sect_list[$this->sector]++ : 1; // Increment access list
+			if ($this->sect_list_en)
+				$this->sect_list[$this->sector] = isset ($this->sect_list[$this->sector]) ? $this->sect_list[$this->sector]++ : 1; // Increment access list
 			$this->sector++; // Increment sector	
 			$this->track_detect(); // Detect track after sector change
 			return ($sector); // return sector
@@ -344,6 +346,7 @@ class CDEMU {
 		if (substr ($sector, 16, 4) == substr ($sector, 20, 4)) { // Detect XA extension
 			$s['subheader'] = substr ($sector, 16, 8); // Subheader - 4byte x2
 			$xa = array();
+			$xa['raw'] = substr ($sector, 16, 4);
 			$xa['file_number'] = ord (substr ($sector, 16, 1)); // File Number
 			$xa['channel_number'] = ord (substr ($sector, 17, 1)); // Channel Number
 
@@ -506,7 +509,7 @@ class CDEMU {
 	// Header to ATime
 	public function header2msf ($h) {
 		$minutes = ord (substr ($h, 0, 1));
-		$seconds = ord ((int)substr ($h, 1, 1)) - 2;
+		$seconds = ord (substr ($h, 1, 1)) - 2;
 		if ($seconds < 0) {
 			$minutes--;
 			$seconds = 60 + $seconds;
@@ -520,7 +523,7 @@ class CDEMU {
 	// Header to Logical Block Address
 	public function header2lba ($h) {
 		$minutes = ord (substr ($h, 0, 1));
-		$seconds = ord ((int)substr ($h, 1, 1)) - 2;
+		$seconds = ord (substr ($h, 1, 1)) - 2;
 		if ($seconds < 0) {
 			$minutes--;
 			$seconds = 60 + $seconds;
@@ -826,6 +829,16 @@ class CDEMU {
 				$gap = false;
 		}
 		return ($sectors);
+	}
+	
+	// Enable accessed sector list
+	public function enable_sector_access_list() {
+		$this->sect_list_en = true;
+	}
+	
+	// Disable accessed sector list
+	public function disable_sector_access_list() {
+		$this->sect_list_en = false;
 	}
 	
 	// Clear accessed sector list
