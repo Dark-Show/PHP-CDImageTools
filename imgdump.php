@@ -18,6 +18,7 @@ function cli_process_argv ($argv) {
 		cli_display_help ($argv);
 
 	$dir_out = "output/";
+	$hash_algos = false;
 	for ($i = 1; $i < count ($argv); $i++) {
 		switch ($argv[$i]) {
 			case '-cue':
@@ -57,6 +58,9 @@ function cli_process_argv ($argv) {
 					$dir_out .= '/';
 				$i++;
 				break;
+			case '-hash':
+				$hash_algos = ['crc32b', 'sha256', 'md5'];
+				break;
 			default:
 				cli_display_help ($argv);
 		}
@@ -74,7 +78,7 @@ function cli_process_argv ($argv) {
 				die ("Error: Failed to load bin file '$b'\n");
 		}
 	}
-	dump_image ($cdemu, $dir_out, false);
+	dump_image ($cdemu, $dir_out, $hash_algos);
 	$cdemu->eject(); // Eject Disk
 }
 
@@ -84,6 +88,7 @@ function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 	if (is_array ($hash) and isset ($hash['full']))
 		cli_print_hashes ($hash['full'], $pre = '  ');
 	$cdemu->clear_sector_access_list();
+	// TODO: dump all sectors XA data
 	
 	// Dump each track
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) {
@@ -228,7 +233,8 @@ function cli_display_help ($argv) {
 	echo ("    -cue \"FILE.CUE\"    Input CUE file\n");
 	echo ("    -iso \"FILE.ISO\"    Input ISO file\n");
 	echo ("    -bin \"FILE.BIN\"    Input BIN file\n");
-	echo ("    -output \"PATH/\"    Output directory\n\n");
+	echo ("    -output \"PATH/\"    Output directory\n");
+	echo ("    -hash              Hash image and output files using: crc32b, sha256, md5\n\n");
 	echo ("  Example Usages:\n");
 	echo ("    " . $argv[0] . " -cue \"input.cue\" -output \"output/\"\n");
 	echo ("    " . $argv[0] . " -iso \"input.iso\" -output \"output/\"\n");
