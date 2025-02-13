@@ -675,13 +675,13 @@ class CDEMU {
 	
 	// Hash sector data using $hash_algos
 	// Note: Multiple hash algos can be supplied by array ('sha1', 'crc32b');
-	public function hash_sector ($hash_algos, $sector, $length = 1, $cb_progress = false) {
-		return ($this->save_sector (false, $sector, $length, $hash_algos, $cb_progress));
+	public function hash_sector ($hash_algos, $sector, $length = 1, $raw = true, $cb_progress = false) {
+		return ($this->save_sector (false, $sector, $length, $raw, $hash_algos, $cb_progress));
 	}
 	
 	// Save sectors to $file
 	// Note: $length is in sectors, not filesize
-	public function save_sector ($file, $sector, $length = 1, $hash_algos = false, $cb_progress = false) {
+	public function save_sector ($file, $sector, $length = 1, $raw = true, $hash_algos = false, $cb_progress = false) {
 		$hash_algos = cdemu_hash_validate ($hash_algos);
 		if ($file === false and $hash_algos === false) // Nothing to do
 			return (false);
@@ -697,13 +697,14 @@ class CDEMU {
 		if ($file !== false and ($fp = fopen ($file, 'w')) === false)
 			return (false); // File error: could not open file for writing
 		for ($pos = 0; $pos < $length; $pos++) {
-			if ($sector + $pos >= $this->CD['sector_count'] or ($data = $this->read ($sector + $pos, true)) === false)
+			if ($sector + $pos >= $this->CD['sector_count'] or ($data = $this->read ($sector + $pos, $raw)) === false)
 				continue; // Sector read error
-			if ($file !== false and fwrite ($fp, $data['sector']) === false)
+			$data = $raw ? $data['sector'] : $data['data'];
+			if ($file !== false and fwrite ($fp, $data) === false)
 				return (false); // File error: out of space
 			if ($hash_algos !== false) {
 				foreach ($hashes as $hash)
-					hash_update ($hash, $data['sector']);
+					hash_update ($hash, $data);
 			}
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $length, $pos + 1);

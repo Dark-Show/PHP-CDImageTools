@@ -98,42 +98,8 @@ function dump_image ($cdemu, $dir_out, $cdda_symlink, $xa_riff, $hash_algos) {
 	$cdemu->enable_sector_access_list();
 	if (is_array ($r_info) and isset ($r_info['hash']) and isset ($r_info['hash']['full']))
 		cli_print_hashes ($r_info['hash']['full'], $pre = '  ');
-	
-	// TODO: Hashing
-	if (is_array ($r_info) and isset ($r_info['analytics'])) {
-		if (isset ($r_info['analytics']['sector'])) { // Dump sector types
-			$types = '';
-			for ($i = 0; $i < count ($r_info['analytics']['sector']); $i++)
-				$types .= chr ($r_info['analytics']['sector'][$i]);
-			file_put_contents ($dir_out . "SECT.bin", $types);
-			unset ($types);
-		}
-	
-		// TODO: Dump header address
-		if (isset ($r_info['analytics']['xa'])) { // Dump XA data
-			$xa = '';
-			$p_xa = false;
-			$k_last = array_key_last ($r_info['analytics']['xa']) + 1;
-			for ($i = array_key_first ($r_info['analytics']['xa']); $i <= $k_last; $i++) {
-				if (!isset ($r_info['analytics']['xa'][$i])) {
-					if (strlen ($xa) > 0) {
-						file_put_contents ($dir_out . "XA$p_xa.bin", $xa);
-						$xa = '';
-					}
-					if (strlen ($p_xa) > 0)
-						$p_xa = false;
-					continue;
-				}
-				if ($p_xa === false)
-					$p_xa = $i;
-				$xa .= $r_info['analytics']['xa'][$i];
-			}
-			unset ($xa);
-		}
-	}
-	
-	// Dump each track
-	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) {
+	dump_analytics ($dir_out, $r_info, $hash_algos);
+	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) { // Dump each track
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
 		echo ("  Track $t\n");
 		if (isset ($r_info['hash']['track'][$track]))
@@ -146,6 +112,83 @@ function dump_image ($cdemu, $dir_out, $cdda_symlink, $xa_riff, $hash_algos) {
 			dump_data ($cdemu, $dir_out, "Track $t/", true, $cdda_symlink, $xa_riff, $hash_algos);
 	}
 	return (true);
+}
+
+// Dump image analytical data to according files
+function dump_analytics ($dir_out, &$r_info, $hash_algos) {
+	if (!is_array ($r_info) or !isset ($r_info['analytics']))
+		return;
+	if (isset ($r_info['analytics']['sector'])) { // Dump sector types
+		$types = '';
+		for ($i = 0; $i < count ($r_info['analytics']['sector']); $i++)
+			$types .= chr ($r_info['analytics']['sector'][$i]);
+		if (strlen ($types) > 0) {
+			echo ("  SECT.bin\n");
+			if (($hash = write_hashed_file ($dir_out . "SECT.bin", $types, $hash_algos)) === false)
+				die ("Error: Could not write file '" . $dir_out . "SECT.bin'\n");
+			cli_print_hashes ($hash['hash'], $pre = '    ');
+		}
+		unset ($types);
+	}
+	if (isset ($r_info['analytics']['address'])) { // Dump invalid header addresses
+		$addr = '';
+		$k_last = array_key_last ($r_info['analytics']['address']) + 1;
+		for ($i = array_key_first ($r_info['analytics']['address']); $i <= $k_last; $i++) {
+			if (!isset ($r_info['analytics']['address'][$i])) {
+				if (strlen ($xa) > 0) {
+					echo ("  ADDR$p_addr.bin\n");
+					if (($hash = write_hashed_file ($dir_out . "ADDR$p_addr.bin", $addr, $hash_algos)) === false)
+						die ("Error: Could not write file '" . $dir_out . "ADDR$p_addr.bin'\n");
+					cli_print_hashes ($hash['hash'], $pre = '    ');
+					$addr = '';
+				}
+				if (isset ($p_addr))
+					unset ($p_addr);
+				continue;
+			}
+			if (!isset ($p_addr))
+				$p_addr = $i;
+			$addr .= $r_info['analytics']['address'][$i];
+		}
+		unset ($addr);
+	}
+	if (isset ($r_info['analytics']['xa'])) { // Dump XA data
+		$xa = '';
+		$k_last = array_key_last ($r_info['analytics']['xa']) + 1;
+		for ($i = array_key_first ($r_info['analytics']['xa']); $i <= $k_last; $i++) {
+			if (!isset ($r_info['analytics']['xa'][$i])) {
+				if (strlen ($xa) > 0) {
+					echo ("  XA$p_xa.bin\n");
+					if (($hash = write_hashed_file ($dir_out . "XA$p_xa.bin", $xa, $hash_algos)) === false)
+						die ("Error: Could not write file '" . $dir_out . "XA$p_xa.bin'\n");
+					cli_print_hashes ($hash['hash'], $pre = '    ');
+					$xa = '';
+				}
+				if (isset ($p_xa))
+					unset ($p_xa);
+				continue;
+			}
+			if (!isset ($p_xa))
+				$p_xa = $i;
+			$xa .= $r_info['analytics']['xa'][$i];
+		}
+		unset ($xa);
+	}
+}
+
+function write_hashed_file ($file_out, &$data, $hash_algos = false) {
+	$r_info = array();
+	if (($hash_algos = cdemu_hash_validate ($hash_algos)) !== false) {
+		foreach ($hash_algos as $algo) {
+			$r_info['hash'][$algo] = hash_init ($algo);
+			hash_update ($r_info['hash'][$algo], $data);
+			$r_info['hash'][$algo] = hash_final ($r_info['hash'][$algo], false);
+		}
+	}
+	$r_info['length'] = strlen ($data);
+	if (file_put_contents ($file_out, $data) === false)
+		return (false);
+	return ($r_info);
 }
 
 // Dump audio track to $file
@@ -216,7 +259,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $trim_filename = false, $cdda_
 		$t_end = $t_start + $cdemu->get_track_length (true) - 1;
 		foreach ($cdemu->get_sector_unaccessed_list ($t_start, $t_end) as $sector => $length) {
 			echo ("    LBA$sector.bin\n");
-			$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');
+			$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, false, $hash_algos, 'cli_dump_progress');
 			cli_print_hashes ($hash);
 		}
 	} else { // Dump unrecognized data track
@@ -224,7 +267,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $trim_filename = false, $cdda_
 		$sector = $cdemu->get_track_start (true);
 		$length = $cdemu->get_track_length (true);
 		echo ("    LBA$sector.bin\n");
-		$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, $hash_algos, 'cli_dump_progress');
+		$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, false, $hash_algos, 'cli_dump_progress');
 		cli_print_hashes ($hash);
 	}
 	return (true); // Return track descriptor
