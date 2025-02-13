@@ -86,7 +86,7 @@ function cli_process_argv ($argv) {
 // Dump image loaded by cdemu
 function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 	$r_info = $cdemu->analyze_image (false, $hash_algos, 'cli_dump_progress'); // Analyze entire image
-	if (isset ($r_info['hash']) and isset ($r_info['hash']['full']))
+	if (is_array ($r_info) and isset ($r_info['hash']) and isset ($r_info['hash']['full']))
 		cli_print_hashes ($r_info['hash']['full'], $pre = '  ');
 	$cdemu->clear_sector_access_list();
 	// TODO: dump all data needed to regenerate image

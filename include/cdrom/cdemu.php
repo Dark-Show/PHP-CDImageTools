@@ -525,27 +525,27 @@ class CDEMU {
 	
 	// Header to ATime
 	public function header2msf ($h) {
-		$minutes = ord (substr ($h, 0, 1));
-		$seconds = ord (substr ($h, 1, 1)) - 2;
+		$minutes = bin2hex (substr ($h, 0, 1));
+		$seconds = bin2hex (substr ($h, 1, 1)) - 2;
 		if ($seconds < 0) {
 			$minutes--;
 			$seconds = 60 + $seconds;
 		}
 		$minutes = str_pad ($minutes, 2, "0", STR_PAD_LEFT);
 		$seconds = str_pad ($seconds, 2, "0", STR_PAD_LEFT);
-		$frames = str_pad (ord (substr ($h, 2, 1)), 2, "0", STR_PAD_LEFT);
+		$frames = str_pad (bin2hex (substr ($h, 2, 1)), 2, "0", STR_PAD_LEFT);
 		return ("$minutes:$seconds:$frames");
 	}
 	
 	// Header to Logical Block Address
 	public function header2lba ($h) {
-		$minutes = ord (substr ($h, 0, 1));
-		$seconds = ord (substr ($h, 1, 1)) - 2;
+		$minutes = bin2hex (substr ($h, 0, 1));
+		$seconds = bin2hex (substr ($h, 1, 1)) - 2;
 		if ($seconds < 0) {
 			$minutes--;
 			$seconds = 60 + $seconds;
 		}
-		$frames = ord (substr ($h, 2, 1));
+		$frames = bin2hex (substr ($h, 2, 1));
 		return (75 * ($minutes * 60 + $seconds) + $frames);
 	}
 
@@ -567,8 +567,10 @@ class CDEMU {
 			$seconds -= 60;
 			$minutes++;
 		}
-		$frames = (int)$time[2];
-		return (chr ($minutes) . chr ($seconds) . chr ($frames));
+		$minutes = str_pad ($minutes, 2, "0", STR_PAD_LEFT);
+		$seconds = str_pad ($seconds, 2, "0", STR_PAD_LEFT);
+		$frames = str_pad ($time[2], 2, "0", STR_PAD_LEFT);
+		return (hex2bin ($minutes) . hex2bin ($seconds) . hex2bin ($frames));
 	}
 
 	// Logical Block Address to ATime
@@ -590,7 +592,10 @@ class CDEMU {
 			$seconds -= 60;
 			$minutes++;
 		}
-		return (chr ($minutes) . chr ($seconds)  . chr ($frames));
+		$minutes = str_pad ($minutes, 2, "0", STR_PAD_LEFT);
+		$seconds = str_pad ($seconds, 2, "0", STR_PAD_LEFT);
+		$frames = str_pad ($frames, 2, "0", STR_PAD_LEFT);
+		return (hex2bin ($minutes) . hex2bin ($seconds)  . hex2bin ($frames));
 	}
 	
 	// Hash image and tracks
@@ -625,7 +630,7 @@ class CDEMU {
 			if ($analyze) {
 				$r_info['analytics']['sector'][$s_cur] = $sector['type']; // Sector type
 				if (isset ($sector['address']) and $this->lba2header ($s_cur) != $sector['address']) // Detect improper address
-					$r_info['analytics']['address'][$s_cur] = $sector['address'];
+					$r_info['analytics']['address'][$this->lba2msf ($s_cur)] = $this->header2msf ($sector['address']);
 				if (isset ($sector['xa'])) // Detect XA sector data
 					$r_info['analytics']['xa'][$s_cur] = $sector['xa']['raw'];
 			}
