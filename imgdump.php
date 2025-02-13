@@ -7,6 +7,7 @@
 const VERSION = '0.1';
 
 include ('include/cdrom/cdemu.const.php');
+include ('include/cdrom/cdemu.common.php');
 include ('include/cdrom/cdemu.php');
 include ('include/cdrom/cdemu.iso9660.php');
 

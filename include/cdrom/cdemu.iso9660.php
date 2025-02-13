@@ -133,15 +133,7 @@ class ISO9660 {
 	public function &read_system_area ($file_out = false, $hash_algos = false) {
 		$fail = false;
 		$r_info = array();
-		if ($hash_algos !== false) {
-			if (is_string ($hash_algos))
-				$hash_algos = array ($hash_algos);
-			foreach ($hash_algos as $algo) { // Verify hash format support
-				foreach (hash_algos() as $sup_algo) {
-					if ($sup_algo == $algo)
-						continue 2;
-				}
-			}
+		if (($hash_algos = cdemu_hash_validate ($hash_algos)) !== false) {
 			foreach ($hash_algos as $algo)
 				$r_info['hash'][$algo] = hash_init ($algo); // Init hash
 		}
@@ -238,15 +230,15 @@ class ISO9660 {
 		$f_info['type'] = ISO9660_FILE; // Regular File
 		$f_info['lba'] = $file['ex_loc_be']; // Address
 		$f_info['length'] = $file['data_len_be']; // Bytes
-		if (isset ($file['extension']['xa'])) {
+		if (isset ($file['extension']['xa'])) { // Process XA
 			if ($file['extension']['xa']['attributes']['cdda']) {
 				$f_info['type'] = ISO9660_FILE_CDDA; // CDDA Link
 				$f_info['track'] = $this->o_cdemu->get_track_by_sector ($file['ex_loc_be'] - 150); // Track
 				$f_info['lba'] -= 150; // Adjust address backwards 2 seconds
-				$f_info['length'] = (($file['data_len_be'] / 2048) + 150) * 2352; // Convert sector length + 2 seconds to bytes bytes
+				$f_info['length'] = (($file['data_len_be'] / 2048) + 150) * 2352; // Convert sector length + 2 seconds to bytes
 			} else if ($file['extension']['xa']['attributes']['form2'] or $file['extension']['xa']['attributes']['interleaved']) {
 				$f_info['type'] = ISO9660_FILE_XA; // Contains mode2-xa sectors
-				$f_info['length'] = ($file['data_len_be'] / 2048) * 2352; // Convert sector length to bytes bytes
+				$f_info['length'] = ($file['data_len_be'] / 2048) * 2352; // Convert sector length to bytes
 			}
 		}
 		return ($f_info);
@@ -265,16 +257,7 @@ class ISO9660 {
 		$r_info = array();
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
-		
-		if ($hash_algos !== false) {
-			if (is_string ($hash_algos))
-				$hash_algos = array ($hash_algos);
-			foreach ($hash_algos as $algo) { // Verify hash format support
-				foreach (hash_algos() as $sup_algo) {
-					if ($sup_algo == $algo)
-						continue 2;
-				}
-			}
+		if (($hash_algos = cdemu_hash_validate ($hash_algos)) !== false) {
 			foreach ($hash_algos as $algo)
 				$r_info['hash'][$algo] = hash_init ($algo); // Init hash
 		}

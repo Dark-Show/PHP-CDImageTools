@@ -144,10 +144,17 @@ class CDEMU {
 	
 	// Load BIN file
 	// Returns true on success, false if file does not exist
-	public function load_bin ($file, $audio = false) {
-		// TODO: Auto detect if audio track
+	public function load_bin ($file) {
 		if (!file_exists ($file))
 			return (false);
+		$audio = false;
+		$fp = fopen ($file, 'r');
+		$header = fread ($fp, 12);
+		fclose ($fp);
+		if ($header != "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00") { // Data track detection
+			// TODO: Attempt to load as ISO
+			$audio = true; // Assume audio track
+		}
 		if (!is_array ($this->CD) or !is_array ($this->CD['track'])) { // Init check
 			$this->init();
 			$this->CD['track'] = array();
@@ -173,6 +180,7 @@ class CDEMU {
 	public function load_iso ($file) {
 		if (!file_exists ($file))
 			return (false);
+		// TODO: Detect if valid ISO9660 track
 		$this->init(); // Init
 		$this->CD['track'] = array();
 		$this->CD['track'][$this->CD['track_count']] = array();
@@ -578,46 +586,51 @@ class CDEMU {
 	
 	// Hash image and tracks
 	public function hash_image ($hash_algos, $cb_progress = false) {
+		if (is_array ($r_info = $this->analyze_image ($hash_algos, false, $cb_progress)))
+			return ($r_info['hash']);
+		return (false);
+	}
+	
+	// Optionally hashes full image and tracks, and optionally analyzes image for data needed for reconstruction
+	public function analyze_image ($hash_algos = false, $analyze = true, $cb_progress = false) {
+		$hash_algos = cdemu_hash_validate ($hash_algos);
+		if ($hash_algos === false and !$analyze)
+			return (false);
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
-		if ($hash_algos === false)
-			return (false);
-		if (is_string ($hash_algos))
-			$hash_algos = array ($hash_algos);
-		foreach ($hash_algos as $algo) { // Verify hash format support
-			foreach (hash_algos() as $sup_algo) {
-				if ($sup_algo == $algo)
-					continue 2;
-			}
-			return (false); // Error: Hash not found
+		$r_info = array();
+		if ($hash_algos !== false) {
+			foreach ($hash_algos as $algo)
+				$r_info['hash']['full'][$algo] = hash_init ($algo); // Init full hash
 		}
-		$hashes = array ('full' => array(), 'track' => array());
-		foreach ($hash_algos as $algo)
-			$hashes['full'][$algo] = hash_init ($algo); // Init full hash
 		if (!$this->set_track (1))
 			return (false); // Track change error (Image ended)
 		$s_len = $this->CD['sector_count'];
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
 			$t_cur = $this->get_track(); // Get current track
-			if (!isset ($hashes['track'][$t_cur])) {
+			if (!isset ($r_info['hash']['track'][$t_cur])) {
 				foreach ($hash_algos as $algo)
-					$hashes['track'][$t_cur][$algo] = hash_init ($algo); // Init track hash
+					$r_info['hash']['track'][$t_cur][$algo] = hash_init ($algo); // Init track hash
 			}
 			$sector = $this->read (false, true);
-			foreach ($hashes['full'] as $hash)
-				hash_update ($hash, $sector['sector']);
-			foreach ($hashes['track'][$t_cur] as $hash)
-				hash_update ($hash, $sector['sector']);
+			if ($hash_algos !== false) {
+				foreach ($r_info['hash']['full'] as $hash)
+					hash_update ($hash, $sector['sector']);
+				foreach ($r_info['hash']['track'][$t_cur] as $hash)
+					hash_update ($hash, $sector['sector']);
+			}
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $s_len, $s_cur + 1);
 		}
-		foreach ($hashes['full'] as $algo => $hash)
-			$hashes['full'][$algo] = hash_final ($hash, false);
-		foreach ($hashes['track'] as $t_cur => $h) {
-			foreach ($h as $algo => $hash)
-				$hashes['track'][$t_cur][$algo] = hash_final ($hash, false);
+		if ($hash_algos !== false) {
+			foreach ($r_info['hash']['full'] as $algo => $hash)
+				$r_info['hash']['full'][$algo] = hash_final ($hash, false);
+			foreach ($r_info['hash']['track'] as $t_cur => $h) {
+				foreach ($h as $algo => $hash)
+					$r_info['hash']['track'][$t_cur][$algo] = hash_final ($hash, false);
+			}
 		}
-		return ($hashes);
+		return ($r_info);
 	}
 
 	// Change Track
@@ -647,21 +660,12 @@ class CDEMU {
 	// Save sectors to $file
 	// Note: $length is in sectors, not filesize
 	public function save_sector ($file, $sector, $length = 1, $hash_algos = false, $cb_progress = false) {
+		$hash_algos = cdemu_hash_validate ($hash_algos);
 		if ($file === false and $hash_algos === false) // Nothing to do
 			return (false);
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
-		
 		if ($hash_algos !== false) {
-			if (is_string ($hash_algos))
-				$hash_algos = array ($hash_algos);
-			foreach ($hash_algos as $algo) { // Verify hash format support
-				foreach (hash_algos() as $sup_algo) {
-					if ($sup_algo == $algo)
-						continue 2;
-				}
-				return (false); // Error: Hash not found
-			}
 			$hashes = array();
 			foreach ($hash_algos as $algo)
 				$hashes[$algo] = hash_init ($algo); // Init hash
@@ -704,32 +708,20 @@ class CDEMU {
 	// Save track to file, with optional hashing support
 	// Note: If $file is false only hash will be computed
 	public function save_track ($file, $track = false, $hash_algos = false, $cb_progress = false) {
+		$hash_algos = cdemu_hash_validate ($hash_algos);
 		if ($file === false and $hash_algos === false) // Nothing to do
 			return (false);
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
-		
 		if ($hash_algos !== false) {
-			if (is_string ($hash_algos))
-				$hash_algos = array ($hash_algos);
-			foreach ($hash_algos as $algo) { // Verify hash format support
-				foreach (hash_algos() as $sup_algo) {
-					if ($sup_algo == $algo)
-						continue 2;
-				}
-				return (false); // Error: Hash not found
-			}
 			$hashes = array();
 			foreach ($hash_algos as $algo)
 				$hashes[$algo] = hash_init ($algo); // Init hash
 		}
-		
 		if ($track !== false and !$this->set_track ($track))
 			return (false); // Track change error (Image ended)
-		
 		if ($file !== false and ($fp = fopen ($file, 'w')) === false)
 			return (false); // File error: could not open file for writing
-			
 		$s_len = $this->get_track_length (true);
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
 			$sector = $this->read (false, true);
