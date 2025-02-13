@@ -228,17 +228,18 @@ class ISO9660 {
 		$f_info = array();
 		$f_info['record'] = $file;
 		$f_info['type'] = ISO9660_FILE; // Regular File
-		$f_info['lba'] = $file['ex_loc_be']; // Address
-		$f_info['length'] = $file['data_len_be']; // Bytes
+		// Compare ex_loc_be/le for smallest and data_len_be/le and for largest values
+		$f_info['lba'] = ($file['ex_loc_be'] == $file['ex_loc_le'] or $file['ex_loc_be'] <= $file['ex_loc_le']) ? $file['ex_loc_be'] : $file['ex_loc_le']; // Address
+		$f_info['length'] = ($file['data_len_be'] == $file['data_len_le'] or $file['data_len_be'] >= $file['data_len_le']) ? $file['data_len_be'] : $file['data_len_le']; // Length (Bytes)
 		if (isset ($file['extension']['xa'])) { // Process XA
 			if ($file['extension']['xa']['attributes']['cdda']) {
 				$f_info['type'] = ISO9660_FILE_CDDA; // CDDA Link
-				$f_info['track'] = $this->o_cdemu->get_track_by_sector ($file['ex_loc_be'] - 150); // Track
+				$f_info['track'] = $this->o_cdemu->get_track_by_sector ($f_info['lba'] - 150); // Track
 				$f_info['lba'] -= 150; // Adjust address backwards 2 seconds
-				$f_info['length'] = (($file['data_len_be'] / 2048) + 150) * 2352; // Convert sector length + 2 seconds to bytes
+				$f_info['length'] = (($f_info['length'] / 2048) + 150) * 2352; // Calculate length for 2352 byte sectors, add 150 sectors
 			} else if ($file['extension']['xa']['attributes']['form2'] or $file['extension']['xa']['attributes']['interleaved']) {
 				$f_info['type'] = ISO9660_FILE_XA; // Contains mode2-xa sectors
-				$f_info['length'] = ($file['data_len_be'] / 2048) * 2352; // Convert sector length to bytes
+				$f_info['length'] = ($f_info['length'] / 2048) * 2352; // Calculate length for 2352 byte sectors
 			}
 		}
 		return ($f_info);

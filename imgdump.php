@@ -20,6 +20,8 @@ function cli_process_argv ($argv) {
 
 	$dir_out = "output/";
 	$hash_algos = false;
+	$cdda_symlink = false;
+	$xa_riff = false;
 	for ($i = 1; $i < count ($argv); $i++) {
 		switch ($argv[$i]) {
 			case '-cue':
@@ -53,11 +55,15 @@ function cli_process_argv ($argv) {
 				if (!isset ($argv[$i + 1]))
 					die ("Error: Missing output directory\n");
 				$dir_out = $argv[$i + 1];
-				if (!is_dir ($dir_out) and !mkdir ($dir_out, 0777, true))
-					die ("Error: Could not create directory '$dir_out'\n");
 				if (substr ($dir_out, -1, 1) != '/')
 					$dir_out .= '/';
 				$i++;
+				break;
+			case '-link':
+				$cdda_symlink = true;
+				break;
+			case '-riff':
+				$xa_riff = true;
 				break;
 			case '-hash':
 				$hash_algos = ['crc32b', 'sha256', 'md5'];
@@ -66,6 +72,9 @@ function cli_process_argv ($argv) {
 				cli_display_help ($argv);
 		}
 	}
+	if (!is_dir ($dir_out) and !mkdir ($dir_out, 0777, true))
+		die ("Error: Could not create directory '$dir_out'\n");
+	
 	$cdemu = new CDEMU;
 	if (isset ($cue) and !$cdemu->load_cue ($cue))
 		die ("Error: Failed to load cue file\n");
@@ -79,17 +88,49 @@ function cli_process_argv ($argv) {
 				die ("Error: Failed to load bin file '$b'\n");
 		}
 	}
-	dump_image ($cdemu, $dir_out, $hash_algos);
+	dump_image ($cdemu, $dir_out, $cdda_symlink, $xa_riff, $hash_algos);
 	$cdemu->eject(); // Eject Disk
 }
 
 // Dump image loaded by cdemu
-function dump_image ($cdemu, $dir_out, $hash_algos = false) {
+function dump_image ($cdemu, $dir_out, $cdda_symlink, $xa_riff, $hash_algos) {
 	$r_info = $cdemu->analyze_image (false, $hash_algos, 'cli_dump_progress'); // Analyze entire image
 	$cdemu->enable_sector_access_list();
 	if (is_array ($r_info) and isset ($r_info['hash']) and isset ($r_info['hash']['full']))
 		cli_print_hashes ($r_info['hash']['full'], $pre = '  ');
-	// TODO: dump all data needed to regenerate image
+	
+	// TODO: Hashing
+	if (is_array ($r_info) and isset ($r_info['analytics'])) {
+		if (isset ($r_info['analytics']['sector'])) { // Dump sector types
+			$types = '';
+			for ($i = 0; $i < count ($r_info['analytics']['sector']); $i++)
+				$types .= chr ($r_info['analytics']['sector'][$i]);
+			file_put_contents ($dir_out . "SECT.bin", $types);
+			unset ($types);
+		}
+	
+		// TODO: Dump header address
+		if (isset ($r_info['analytics']['xa'])) { // Dump XA data
+			$xa = '';
+			$p_xa = false;
+			$k_last = array_key_last ($r_info['analytics']['xa']) + 1;
+			for ($i = array_key_first ($r_info['analytics']['xa']); $i <= $k_last; $i++) {
+				if (!isset ($r_info['analytics']['xa'][$i])) {
+					if (strlen ($xa) > 0) {
+						file_put_contents ($dir_out . "XA$p_xa.bin", $xa);
+						$xa = '';
+					}
+					if (strlen ($p_xa) > 0)
+						$p_xa = false;
+					continue;
+				}
+				if ($p_xa === false)
+					$p_xa = $i;
+				$xa .= $r_info['analytics']['xa'][$i];
+			}
+			unset ($xa);
+		}
+	}
 	
 	// Dump each track
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) {
@@ -102,7 +143,7 @@ function dump_image ($cdemu, $dir_out, $hash_algos = false) {
 		if ($cdemu->get_track_type() == CDEMU_TRACK_AUDIO)
 			dump_audio ($cdemu, $dir_out, "Track $t.cdda");
 		else
-			dump_data ($cdemu, $dir_out, "Track $t/", true, true, true, $hash_algos);
+			dump_data ($cdemu, $dir_out, "Track $t/", true, $cdda_symlink, $xa_riff, $hash_algos);
 	}
 	return (true);
 }
@@ -155,8 +196,8 @@ function dump_data ($cdemu, $dir_out, $track_dir, $trim_filename = false, $cdda_
 				symlink ($target, $l_path . $l_name); // Create symlink to CDDA track
 				continue;
 			} else if ($f_info['type'] == ISO9660_FILE_XA) { // XA
-				$raw = true;
 				if ($xa_riff) {
+					$raw = true;
 					$h_riff_fmt_id = "CDXA";
 					$h_riff_fmt = $f_info['record']['extension']['xa']['data'] . "\x00\x00";
 					$header = "RIFF" . pack ('V', $f_info['length'] + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $f_info['length']);
@@ -235,6 +276,8 @@ function cli_display_help ($argv) {
 	echo ("    -iso \"FILE.ISO\"    Input ISO file\n");
 	echo ("    -bin \"FILE.BIN\"    Input BIN file\n");
 	echo ("    -output \"PATH/\"    Output directory\n");
+	echo ("    -link              Create symbolic links for XA-CDDA files\n");
+	echo ("    -riff              Dump XA files to RIFF-CDXA\n");
 	echo ("    -hash              Hash image and output files using: crc32b, sha256, md5\n\n");
 	echo ("  Example Usages:\n");
 	echo ("    " . $argv[0] . " -cue \"input.cue\" -output \"output/\"\n");
