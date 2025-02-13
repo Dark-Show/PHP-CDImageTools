@@ -29,7 +29,7 @@ class CDEMU {
 	private $track = 0; // Current track
 	private $sector = 0; // Current sector
 	private $sect_list = array(); // Accessed sector list
-	private $sect_list_en = true; // Accessed sector list control
+	private $sect_list_en = false; // Accessed sector list control
 	private $lut_edc = array(); // EDC LUT
 	private $lut_ecc_b = array(); // ECC LUT
 	private $lut_ecc_f = array(); // ECC LUT
@@ -293,7 +293,8 @@ class CDEMU {
 		$this->CD = 0;
 		$this->track = 0;
 		$this->sector = 0;
-		$this->sect_list = array();
+		$this->sect_list = array(); // Clear sector access list
+		$this->sect_list_en = false; // Disable sector access list
 	}
 	
 	// Initilize Emulated CD
@@ -630,7 +631,7 @@ class CDEMU {
 			if ($analyze) {
 				$r_info['analytics']['sector'][$s_cur] = $sector['type']; // Sector type
 				if (isset ($sector['address']) and $this->lba2header ($s_cur) != $sector['address']) // Detect improper address
-					$r_info['analytics']['address'][$this->lba2msf ($s_cur)] = $this->header2msf ($sector['address']);
+					$r_info['analytics']['address'][$s_cur] = $sector['address'];
 				if (isset ($sector['xa'])) // Detect XA sector data
 					$r_info['analytics']['xa'][$s_cur] = $sector['xa']['raw'];
 			}
