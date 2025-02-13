@@ -85,18 +85,18 @@ function cli_process_argv ($argv) {
 
 // Dump image loaded by cdemu
 function dump_image ($cdemu, $dir_out, $hash_algos = false) {
-	$hash = $cdemu->hash_image ($hash_algos, 'cli_dump_progress'); // Hash entire image
-	if (is_array ($hash) and isset ($hash['full']))
-		cli_print_hashes ($hash['full'], $pre = '  ');
+	$r_info = $cdemu->analyze_image (false, $hash_algos, 'cli_dump_progress'); // Analyze entire image
+	if (isset ($r_info['hash']) and isset ($r_info['hash']['full']))
+		cli_print_hashes ($r_info['hash']['full'], $pre = '  ');
 	$cdemu->clear_sector_access_list();
-	// TODO: dump all sectors XA data
+	// TODO: dump all data needed to regenerate image
 	
 	// Dump each track
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) {
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
 		echo ("  Track $t\n");
-		if (isset ($hash['track'][$track]))
-			cli_print_hashes ($hash['track'][$track], $pre = '    ');
+		if (isset ($r_info['hash']['track'][$track]))
+			cli_print_hashes ($r_info['hash']['track'][$track], $pre = '    ');
 		if (!$cdemu->set_track ($track))
 			die ("Error: Unexpected end of image!\n");
 		if ($cdemu->get_track_type() == CDEMU_TRACK_AUDIO)

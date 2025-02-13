@@ -316,6 +316,7 @@ class CDEMU {
 		$s['sector'] = $sector; // Save raw sector
 		
 		if ($this->CD['track'][$this->track]['format'] == CDEMU_TRACK_AUDIO or substr ($sector, 0, 12) != "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00") { // Audio check
+			$s['type'] = CDEMU_SECT_AUDIO;
 			$s['data'] = $sector; // 2352b
 			return ($s);
 		}
@@ -325,12 +326,13 @@ class CDEMU {
 		//   Address - 3b
 		//   Mode	 - 1b
 		$s['sync'] = substr ($sector, 0, 12);
-		$s['address'] = $this->header2msf (substr ($sector, 12, 3));
+		$s['address'] = substr ($sector, 12, 3);
 		$s['mode'] = ord (substr ($sector, 15, 1));
 	
 		// Mode 0:
 		//   Zeroes - 2336b
 		if ($s['mode'] == 0) {
+			$s['type'] = CDEMU_SECT_MODE0;
 			$s['data'] = substr ($sector, 16, 2336); // 2336b
 			return ($s);
 		}
@@ -342,6 +344,7 @@ class CDEMU {
 		//   ECC	   - 276b
 		$m1_edc = $this->edc_compute ($sector, 0, 2064); // Header + Data
 		if (substr ($sector, 2064, 4) == $m1_edc) { // EDC Mode 1 Test
+			$s['type'] = CDEMU_SECT_MODE1;
 			$s['data'] = substr ($sector, 16, 2048); // 2048b
 			$s['edc'] = substr ($sector, 2064, 4);
 			$s['edc_gen'] = $m1_edc;
@@ -388,6 +391,7 @@ class CDEMU {
 			//   ECC	   - 276b
 			$m2xa1_edc = $this->edc_compute ($sector, 16, 2056); // XA Subheader + Data
 			if (substr ($sector, 2072, 4) == $m2xa1_edc) { // Mode 2 XA Form 1 EDC Test
+				$s['type'] = CDEMU_SECT_MODE2FORM1;
 				$s['data'] = substr ($sector, 24, 2048); // 2048b
 				$s['edc'] = substr ($sector, 2072, 4);
 				$s['edc_gen'] = $m2xa1_edc;
@@ -401,6 +405,7 @@ class CDEMU {
 			//   EDC	   - 4b
 			$m2xa2_edc = $this->edc_compute ($sector, 16, 2332); // XA Subheader + Data
 			if (substr ($sector, 2348, 4) == $m2xa2_edc) { // Mode 2 XA Form 2 EDC Test
+				$s['type'] = CDEMU_SECT_MODE2FORM2;
 				$s['data'] = substr ($sector, 24, 2324); // 2324b
 				$s['edc'] = substr ($sector, 2348, 4);
 				$s['edc_gen'] = $m2xa2_edc;
@@ -409,6 +414,7 @@ class CDEMU {
 			
 			// Trust XA Form
 			if ($s['xa']['submode']['form'] == 1) { // Mode 2 XA Form 1
+				$s['type'] = CDEMU_SECT_MODE2FORM1;
 				$s['data'] = substr ($sector, 24, 2048); // 2048b
 				$s['edc'] = substr ($sector, 2072, 4);
 				$s['edc_gen'] = $m2xa1_edc;
@@ -416,6 +422,7 @@ class CDEMU {
 				$s['ecc_gen'] = $this->ecc_compute ($sector);
 				return ($s);
 			} else if ($s['xa']['submode']['form'] == 2) { // Mode 2 XA Form 2
+				$s['type'] = CDEMU_SECT_MODE2FORM2;
 				$s['data'] = substr ($sector, 24, 2324); // 2324b
 				$s['edc'] = substr ($sector, 2348, 4);
 				$s['edc_gen'] = $m2xa2_edc;
@@ -425,11 +432,13 @@ class CDEMU {
 		
 		// Trust header for mode 2 detection
 		if ($s['mode'] == 2) {
+			$s['type'] = CDEMU_SECT_MODE2;
 			$s['data'] = substr ($sector, 16, 2336); // 2336b
 			return ($s);
 		}
 		
 		// Default to mode 1
+		$s['type'] = CDEMU_SECT_MODE1;
 		$s['data'] = substr ($sector, 16, 2048); // 2048b
 		$s['edc'] = substr ($sector, 2064, 4);
 		$s['edc_gen'] = $m1_edc;
@@ -555,7 +564,7 @@ class CDEMU {
 		$minutes = (int)$time[0];
 		$seconds = (int)$time[1] + 2;
 		if ($seconds > 59) {
-			$seconds = 0;
+			$seconds -= 60;
 			$minutes++;
 		}
 		$frames = (int)$time[2];
@@ -578,7 +587,7 @@ class CDEMU {
 		$minutes = intval ($seconds / 60);
 		$seconds = ($seconds - ($minutes * 60)) + 2;
 		if ($seconds > 59) {
-			$seconds = 0;
+			$seconds -= 60;
 			$minutes++;
 		}
 		return (chr ($minutes) . chr ($seconds)  . chr ($frames));
@@ -586,13 +595,13 @@ class CDEMU {
 	
 	// Hash image and tracks
 	public function hash_image ($hash_algos, $cb_progress = false) {
-		if (is_array ($r_info = $this->analyze_image ($hash_algos, false, $cb_progress)))
+		if (is_array ($r_info = $this->analyze_image (false, $hash_algos, $cb_progress)))
 			return ($r_info['hash']);
 		return (false);
 	}
 	
-	// Optionally hashes full image and tracks, and optionally analyzes image for data needed for reconstruction
-	public function analyze_image ($hash_algos = false, $analyze = true, $cb_progress = false) {
+	// Optionally analyzes image for reconstruction data. and optionally hashes image and tracks 
+	public function analyze_image ($analyze = true, $hash_algos = false, $cb_progress = false) {
 		$hash_algos = cdemu_hash_validate ($hash_algos);
 		if ($hash_algos === false and !$analyze)
 			return (false);
@@ -608,11 +617,18 @@ class CDEMU {
 		$s_len = $this->CD['sector_count'];
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
 			$t_cur = $this->get_track(); // Get current track
-			if (!isset ($r_info['hash']['track'][$t_cur])) {
+			if ($hash_algos !== false and !isset ($r_info['hash']['track'][$t_cur])) {
 				foreach ($hash_algos as $algo)
 					$r_info['hash']['track'][$t_cur][$algo] = hash_init ($algo); // Init track hash
 			}
-			$sector = $this->read (false, true);
+			$sector = $this->read (false, $analyze ? false : true);
+			if ($analyze) {
+				$r_info['analytics']['sector'][$s_cur] = $sector['type']; // Sector type
+				if (isset ($sector['address']) and $this->lba2header ($s_cur) != $sector['address']) // Detect improper address
+					$r_info['analytics']['address'][$s_cur] = $sector['address'];
+				if (isset ($sector['xa'])) // Detect XA sector data
+					$r_info['analytics']['xa'][$s_cur] = $sector['xa']['raw'];
+			}
 			if ($hash_algos !== false) {
 				foreach ($r_info['hash']['full'] as $hash)
 					hash_update ($hash, $sector['sector']);
@@ -670,13 +686,10 @@ class CDEMU {
 			foreach ($hash_algos as $algo)
 				$hashes[$algo] = hash_init ($algo); // Init hash
 		}
-		
 		if ($sector >= $this->CD['sector_count'])
 			return (false);
-		
 		if ($file !== false and ($fp = fopen ($file, 'w')) === false)
 			return (false); // File error: could not open file for writing
-		
 		for ($pos = 0; $pos < $length; $pos++) {
 			if ($sector + $pos >= $this->CD['sector_count'] or ($data = $this->read ($sector + $pos, true)) === false)
 				continue; // Sector read error
