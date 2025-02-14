@@ -17,9 +17,10 @@ function cli_process_argv ($argv) {
 	echo ("CD-ROM Image Dumper v" . VERSION . "\n");
 	if (count ($argv) == 1)
 		cli_display_help ($argv);
-
 	$dir_out = "output/";
 	$hash_algos = false;
+	$full_dump = false;
+	$filename_trim = false;
 	$cdda_symlink = false;
 	$xa_riff = false;
 	for ($i = 1; $i < count ($argv); $i++) {
@@ -59,6 +60,12 @@ function cli_process_argv ($argv) {
 					$dir_out .= '/';
 				$i++;
 				break;
+			case '-full':
+				$full_dump = true;
+				break;
+			case '-trim_name':
+				$filename_trim = true;
+				break;
 			case '-link':
 				$cdda_symlink = true;
 				break;
@@ -71,6 +78,11 @@ function cli_process_argv ($argv) {
 			default:
 				cli_display_help ($argv);
 		}
+	}
+	if ($full_dump) {
+		$filename_trim = false;
+		$cdda_symlink = false;
+		$xa_riff = false;
 	}
 	if (!is_dir ($dir_out) and !mkdir ($dir_out, 0777, true))
 		die ("Error: Could not create directory '$dir_out'\n");
@@ -88,17 +100,17 @@ function cli_process_argv ($argv) {
 				die ("Error: Failed to load bin file '$b'\n");
 		}
 	}
-	dump_image ($cdemu, $dir_out, $cdda_symlink, $xa_riff, $hash_algos);
+	dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos);
 	$cdemu->eject(); // Eject Disk
 }
 
 // Dump image loaded by cdemu
-function dump_image ($cdemu, $dir_out, $cdda_symlink, $xa_riff, $hash_algos) {
-	$r_info = $cdemu->analyze_image (false, $hash_algos, 'cli_dump_progress'); // Analyze entire image
+function dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos) {
+	$r_info = $cdemu->analyze_image ($full_dump, $hash_algos, 'cli_dump_progress'); // Analyze entire image
 	$cdemu->enable_sector_access_list();
 	if (is_array ($r_info) and isset ($r_info['hash']) and isset ($r_info['hash']['full']))
 		cli_print_hashes ($r_info['hash']['full'], $pre = '  ');
-	dump_analytics ($dir_out, $r_info, $hash_algos);
+	dump_analytics ($cdemu, $dir_out, $r_info, $hash_algos);
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) { // Dump each track
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
 		echo ("  Track $t\n");
@@ -109,13 +121,13 @@ function dump_image ($cdemu, $dir_out, $cdda_symlink, $xa_riff, $hash_algos) {
 		if ($cdemu->get_track_type() == CDEMU_TRACK_AUDIO)
 			dump_audio ($cdemu, $dir_out, "Track $t.cdda");
 		else
-			dump_data ($cdemu, $dir_out, "Track $t/", true, $cdda_symlink, $xa_riff, $hash_algos);
+			dump_data ($cdemu, $dir_out, "Track $t/", $filename_trim, $cdda_symlink, $xa_riff, $hash_algos);
 	}
 	return (true);
 }
 
 // Dump image analytical data to according files
-function dump_analytics ($dir_out, &$r_info, $hash_algos) {
+function dump_analytics ($cdemu, $dir_out, &$r_info, $hash_algos) {
 	if (!is_array ($r_info) or !isset ($r_info['analytics']))
 		return;
 	if (isset ($r_info['analytics']['sector'])) { // Dump sector types
@@ -123,10 +135,12 @@ function dump_analytics ($dir_out, &$r_info, $hash_algos) {
 		for ($i = 0; $i < count ($r_info['analytics']['sector']); $i++)
 			$types .= chr ($r_info['analytics']['sector'][$i]);
 		if (strlen ($types) > 0) {
-			echo ("  SECT.bin\n");
-			if (($hash = write_hashed_file ($dir_out . "SECT.bin", $types, $hash_algos)) === false)
-				die ("Error: Could not write file '" . $dir_out . "SECT.bin'\n");
-			cli_print_hashes ($hash['hash'], $pre = '    ');
+			$file_out = "CD.bin";
+			echo ("  $file_out\n");
+			if (($hash = hash_write_file ($dir_out . $file_out, $types, $hash_algos)) === false)
+				die ("Error: Could not write file '" . $dir_out . $file_out . "'\n");
+			if (is_array ($hash) and isset ($hash['hash']))
+				cli_print_hashes ($hash['hash'], $pre = '    ');
 		}
 		unset ($types);
 	}
@@ -135,11 +149,13 @@ function dump_analytics ($dir_out, &$r_info, $hash_algos) {
 		$k_last = array_key_last ($r_info['analytics']['address']) + 1;
 		for ($i = array_key_first ($r_info['analytics']['address']); $i <= $k_last; $i++) {
 			if (!isset ($r_info['analytics']['address'][$i])) {
-				if (strlen ($xa) > 0) {
-					echo ("  ADDR$p_addr.bin\n");
-					if (($hash = write_hashed_file ($dir_out . "ADDR$p_addr.bin", $addr, $hash_algos)) === false)
-						die ("Error: Could not write file '" . $dir_out . "ADDR$p_addr.bin'\n");
-					cli_print_hashes ($hash['hash'], $pre = '    ');
+				if (strlen ($addr) > 0) {
+					$file_out = "CDADDR" . str_pad ($p_addr, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
+					echo ("  $file_out\n");
+					if (($hash = hash_write_file ($dir_out . $file_out, $addr, $hash_algos)) === false)
+						die ("Error: Could not write file '" . $dir_out . $file_out . "'\n");
+					if (is_array ($hash) and isset ($hash['hash']))
+						cli_print_hashes ($hash['hash'], $pre = '    ');
 					$addr = '';
 				}
 				if (isset ($p_addr))
@@ -158,10 +174,12 @@ function dump_analytics ($dir_out, &$r_info, $hash_algos) {
 		for ($i = array_key_first ($r_info['analytics']['xa']); $i <= $k_last; $i++) {
 			if (!isset ($r_info['analytics']['xa'][$i])) {
 				if (strlen ($xa) > 0) {
-					echo ("  XA$p_xa.bin\n");
-					if (($hash = write_hashed_file ($dir_out . "XA$p_xa.bin", $xa, $hash_algos)) === false)
-						die ("Error: Could not write file '" . $dir_out . "XA$p_xa.bin'\n");
-					cli_print_hashes ($hash['hash'], $pre = '    ');
+					$file_out = "CDXA" . str_pad ($p_xa, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
+					echo ("  $file_out\n");
+					if (($hash = hash_write_file ($dir_out . $file_out, $xa, $hash_algos)) === false)
+						die ("Error: Could not write file '" . $dir_out . $file_out."'\n");
+					if (is_array ($hash) and isset ($hash['hash']))
+						cli_print_hashes ($hash['hash'], $pre = '    ');
 					$xa = '';
 				}
 				if (isset ($p_xa))
@@ -176,7 +194,7 @@ function dump_analytics ($dir_out, &$r_info, $hash_algos) {
 	}
 }
 
-function write_hashed_file ($file_out, &$data, $hash_algos = false) {
+function hash_write_file ($file_out, &$data, $hash_algos = false) {
 	$r_info = array();
 	if (($hash_algos = cdemu_hash_validate ($hash_algos)) !== false) {
 		foreach ($hash_algos as $algo) {
@@ -247,7 +265,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $trim_filename = false, $cdda_
 				}
 			}
 			if (($r_info = $iso9660->file_read ($f_info, $file_out, $raw, $header, $hash_algos, 'cli_dump_progress')) === false) {
-				echo ("    Error: Image issues!\n");
+				echo ("      Error: Image ended prematurely!\n");
 				continue;
 			}
 			if (isset ($r_info['hash']))
@@ -258,16 +276,18 @@ function dump_data ($cdemu, $dir_out, $track_dir, $trim_filename = false, $cdda_
 		$t_start = $cdemu->get_track_start (true);
 		$t_end = $t_start + $cdemu->get_track_length (true) - 1;
 		foreach ($cdemu->get_sector_unaccessed_list ($t_start, $t_end) as $sector => $length) {
-			echo ("    LBA$sector.bin\n");
-			$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, false, $hash_algos, 'cli_dump_progress');
+			$file_out = "LBA" . str_pad ($sector, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
+			echo ("    $file_out\n");
+			$hash = $cdemu->save_sector ($dir_out . $track_dir . $file_out, $sector, $length, false, $hash_algos, 'cli_dump_progress');
 			cli_print_hashes ($hash);
 		}
 	} else { // Dump unrecognized data track
 		$cdemu->enable_sector_access_list();
 		$sector = $cdemu->get_track_start (true);
 		$length = $cdemu->get_track_length (true);
-		echo ("    LBA$sector.bin\n");
-		$hash = $cdemu->save_sector ($dir_out . $track_dir . "LBA$sector.bin", $sector, $length, false, $hash_algos, 'cli_dump_progress');
+		$file_out = "LBA" . str_pad ($sector, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
+		echo ("    $file_out\n");
+		$hash = $cdemu->save_sector ($dir_out . $track_dir . $file_out, $sector, $length, false, $hash_algos, 'cli_dump_progress');
 		cli_print_hashes ($hash);
 	}
 	return (true); // Return track descriptor
@@ -319,6 +339,8 @@ function cli_display_help ($argv) {
 	echo ("    -iso \"FILE.ISO\"    Input ISO file\n");
 	echo ("    -bin \"FILE.BIN\"    Input BIN file\n");
 	echo ("    -output \"PATH/\"    Output directory\n");
+	echo ("    -full              Dump image contents in a way that can be reassembled\n");
+	echo ("    -trim_name         Trim version information from ISO9660 filenames\n");
 	echo ("    -link              Create symbolic links for XA-CDDA files\n");
 	echo ("    -riff              Dump XA files to RIFF-CDXA\n");
 	echo ("    -hash              Hash image and output files using: crc32b, sha256, md5\n\n");

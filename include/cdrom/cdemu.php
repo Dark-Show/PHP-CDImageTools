@@ -143,8 +143,8 @@ class CDEMU {
 	}
 	
 	// Load BIN file
-	// Returns true on success, false if file does not exist
-	public function load_bin ($file) {
+	// Returns true on success, false on error
+	public function load_bin ($file, $data_only = false) {
 		if (!file_exists ($file))
 			return (false);
 		$audio = false;
@@ -152,7 +152,10 @@ class CDEMU {
 		$header = fread ($fp, 12);
 		fclose ($fp);
 		if ($header != "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00") { // Data track detection
-			// TODO: Attempt to load as ISO
+			if ($data_only)
+				return (false);
+			if ($this->load_iso ($file)) // Attempt to load as ISO
+				return (true);
 			$audio = true; // Assume audio track
 		}
 		if (!is_array ($this->CD) or !is_array ($this->CD['track'])) { // Init check
@@ -176,11 +179,19 @@ class CDEMU {
 	}
 	
 	// Load ISO file
-	// Returns true on success, false if file does not exist
+	// Returns true on success, false on error
 	public function load_iso ($file) {
 		if (!file_exists ($file))
 			return (false);
-		// TODO: Detect if valid ISO9660 track
+		$fp = fopen ($file, 'r');
+		fseek ($fp, 2048 * 16 + 1);
+		$header = fread ($fp, 5);
+		fclose ($fp);
+		if ($header !== "CD001") {
+			if ($this->load_bin ($file, true)) // Attempt to load as data BIN
+				return (true);
+			return (false);
+		}
 		$this->init(); // Init
 		$this->CD['track'] = array();
 		$this->CD['track'][$this->CD['track_count']] = array();
@@ -266,7 +277,7 @@ class CDEMU {
 						$this->buffer[$i] = $this->read_bin_sector ($data); // Process bin/cue type sector
 				} else if ($this->CD['track'][$this->track]['format'] == CDEMU_FILE_ISO)
 					$this->buffer[$i] = $this->read_iso_sector ($data, $i); // Process iso type sector
-				if (feof ($this->fh)) // if not end of file
+				if (feof ($this->fh))
 					break;
 			}
 		}
@@ -453,8 +464,9 @@ class CDEMU {
 	private function &read_iso_sector (&$data, $lba) {
 		$s = array();
 		$s['sync'] = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
-		$s['address'] = $this->lba2msf ($lba);
+		$s['address'] = $this->lba2header ($lba);
 		$s['mode'] = 1;
+		$s['type'] = CDEMU_SECT_MODE1;
 		$s['data'] = $data;
 		$s['sector'] = $s['sync'] . $this->lba2header ($lba) . "\x01" . $data;
 		$s['edc'] = $this->edc_compute ($s['sector'], 0, 2064);
@@ -634,6 +646,7 @@ class CDEMU {
 					$r_info['analytics']['address'][$s_cur] = $sector['address'];
 				if (isset ($sector['xa'])) // Detect XA sector data
 					$r_info['analytics']['xa'][$s_cur] = $sector['xa']['raw'];
+				// TODO: EDC/ECC errors
 			}
 			if ($hash_algos !== false) {
 				foreach ($r_info['hash']['full'] as $hash)
