@@ -192,6 +192,54 @@ function dump_analytics ($cdemu, $dir_out, &$r_info, $hash_algos) {
 		}
 		unset ($xa);
 	}
+	if (isset ($r_info['analytics']['edc'])) { // Dump EDC errors
+		$edc = '';
+		$k_last = array_key_last ($r_info['analytics']['edc']) + 1;
+		for ($i = array_key_first ($r_info['analytics']['edc']); $i <= $k_last; $i++) {
+			if (!isset ($r_info['analytics']['edc'][$i])) {
+				if (strlen ($edc) > 0) {
+					$file_out = "CDEDC" . str_pad ($p_edc, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
+					echo ("  $file_out\n");
+					if (($hash = hash_write_file ($dir_out . $file_out, $edc, $hash_algos)) === false)
+						die ("Error: Could not write file '" . $dir_out . $file_out."'\n");
+					if (is_array ($hash) and isset ($hash['hash']))
+						cli_print_hashes ($hash['hash'], $pre = '    ');
+					$edc = '';
+				}
+				if (isset ($p_edc))
+					unset ($p_edc);
+				continue;
+			}
+			if (!isset ($p_edc))
+				$p_edc = $i;
+			$edc .= $r_info['analytics']['edc'][$i];
+		}
+		unset ($edc);
+	}
+	if (isset ($r_info['analytics']['ecc'])) { // Dump ECC errors
+		$ecc = '';
+		$k_last = array_key_last ($r_info['analytics']['ecc']) + 1;
+		for ($i = array_key_first ($r_info['analytics']['ecc']); $i <= $k_last; $i++) {
+			if (!isset ($r_info['analytics']['ecc'][$i])) {
+				if (strlen ($edc) > 0) {
+					$file_out = "CDECC" . str_pad ($p_ecc, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
+					echo ("  $file_out\n");
+					if (($hash = hash_write_file ($dir_out . $file_out, $ecc, $hash_algos)) === false)
+						die ("Error: Could not write file '" . $dir_out . $file_out."'\n");
+					if (is_array ($hash) and isset ($hash['hash']))
+						cli_print_hashes ($hash['hash'], $pre = '    ');
+					$ecc = '';
+				}
+				if (isset ($p_ecc))
+					unset ($p_ecc);
+				continue;
+			}
+			if (!isset ($p_ecc))
+				$p_ecc = $i;
+			$ecc .= $r_info['analytics']['ecc'][$i];
+		}
+		unset ($ecc);
+	}
 }
 
 function hash_write_file ($file_out, &$data, $hash_algos = false) {
@@ -319,11 +367,11 @@ function symlink_relative_path ($target, $link) {
 }
 
 function cli_print_hashes ($hash, $pre = '      ') {
-	if (is_array ($hash)) {
-		foreach ($hash as $algo => $res)
-			echo ("$pre$algo: $res\n");
-		echo ("\n");
-	}
+	if (!is_array ($hash))
+		return;
+	foreach ($hash as $algo => $res)
+		echo ("$pre$algo: $res\n");
+	echo ("\n");
 }
 
 function cli_dump_progress ($length, $pos) {

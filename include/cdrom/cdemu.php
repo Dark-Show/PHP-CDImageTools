@@ -359,10 +359,10 @@ class CDEMU {
 			$s['type'] = CDEMU_SECT_MODE1;
 			$s['data'] = substr ($sector, 16, 2048); // 2048b
 			$s['edc'] = substr ($sector, 2064, 4);
-			$s['edc_gen'] = $m1_edc;
 			$s['reserved'] = substr ($sector, 2068, 8);
 			$s['ecc'] = substr ($sector, 2076, 276);
-			$s['ecc_gen'] = $this->ecc_compute ($sector);
+			if (($ecc = $this->ecc_compute ($sector)) != $s['ecc'])
+				$s['error']['ecc'] = $ecc;
 			return ($s);
 		}
 		
@@ -406,9 +406,9 @@ class CDEMU {
 				$s['type'] = CDEMU_SECT_MODE2FORM1;
 				$s['data'] = substr ($sector, 24, 2048); // 2048b
 				$s['edc'] = substr ($sector, 2072, 4);
-				$s['edc_gen'] = $m2xa1_edc;
 				$s['ecc'] = substr ($sector, 2076, 276);
-				$s['ecc_gen'] = $this->ecc_compute ($sector);
+				if (($ecc = $this->ecc_compute ($sector)) != $s['ecc'])
+					$s['error']['ecc'] = $ecc;
 				return ($s);
 			}
 
@@ -420,7 +420,6 @@ class CDEMU {
 				$s['type'] = CDEMU_SECT_MODE2FORM2;
 				$s['data'] = substr ($sector, 24, 2324); // 2324b
 				$s['edc'] = substr ($sector, 2348, 4);
-				$s['edc_gen'] = $m2xa2_edc;
 				return ($s);
 			}
 			
@@ -429,15 +428,18 @@ class CDEMU {
 				$s['type'] = CDEMU_SECT_MODE2FORM1;
 				$s['data'] = substr ($sector, 24, 2048); // 2048b
 				$s['edc'] = substr ($sector, 2072, 4);
-				$s['edc_gen'] = $m2xa1_edc;
+				if ($m2xa1_edc != $s['edc'])
+					$s['error']['edc'] = $m2xa1_edc;
 				$s['ecc'] = substr ($sector, 2076, 276);
-				$s['ecc_gen'] = $this->ecc_compute ($sector);
+				if (($ecc = $this->ecc_compute ($sector)) != $s['ecc'])
+					$s['error']['ecc'] = $ecc;
 				return ($s);
 			} else if ($s['xa']['submode']['form'] == 2) { // Mode 2 XA Form 2
 				$s['type'] = CDEMU_SECT_MODE2FORM2;
 				$s['data'] = substr ($sector, 24, 2324); // 2324b
 				$s['edc'] = substr ($sector, 2348, 4);
-				$s['edc_gen'] = $m2xa2_edc;
+				if ($m2xa2_edc != $s['edc'])
+					$s['error']['edc'] = $m2xa2_edc;
 				return ($s);
 			}
 		}
@@ -453,10 +455,12 @@ class CDEMU {
 		$s['type'] = CDEMU_SECT_MODE1;
 		$s['data'] = substr ($sector, 16, 2048); // 2048b
 		$s['edc'] = substr ($sector, 2064, 4);
-		$s['edc_gen'] = $m1_edc;
+		if ($m1_edc != $s['edc'])
+			$s['error']['edc'] = $m1_edc;
 		$s['reserved'] = substr ($sector, 2068, 8);
 		$s['ecc'] = substr ($sector, 2076, 276);
-		$s['ecc_gen'] = $this->ecc_compute ($sector);
+		if (($ecc = $this->ecc_compute ($sector)) != $s['ecc'])
+			$s['error']['ecc'] = $ecc;
 		return ($s);
 	}
 	
@@ -618,7 +622,7 @@ class CDEMU {
 		return (false);
 	}
 	
-	// Optionally analyzes image for reconstruction data. and optionally hashes image and tracks 
+	// Optionally analyzes image for reconstruction data, and optionally hashes image and tracks 
 	public function analyze_image ($analyze = true, $hash_algos = false, $cb_progress = false) {
 		$hash_algos = cdemu_hash_validate ($hash_algos);
 		if ($hash_algos === false and !$analyze)
@@ -642,11 +646,16 @@ class CDEMU {
 			$sector = $this->read (false, $analyze ? false : true);
 			if ($analyze) {
 				$r_info['analytics']['sector'][$s_cur] = $sector['type']; // Sector type
-				if (isset ($sector['address']) and $this->lba2header ($s_cur) != $sector['address']) // Detect improper address
-					$r_info['analytics']['address'][$s_cur] = $sector['address'];
-				if (isset ($sector['xa'])) // Detect XA sector data
-					$r_info['analytics']['xa'][$s_cur] = $sector['xa']['raw'];
-				// TODO: EDC/ECC errors
+				if (isset ($sector['address']) and $this->lba2header ($s_cur) != $sector['address'])
+					$r_info['analytics']['address'][$s_cur] = $sector['address']; // Address
+				if (isset ($sector['xa']))
+					$r_info['analytics']['xa'][$s_cur] = $sector['xa']['raw']; // XA
+				if (isset ($sector['error'])) {
+					if (isset ($sector['error']['edc']))
+						$r_info['analytics']['edc'][$s_cur] = $sector['error']['edc']; // EDC
+					if (isset ($sector['error']['ecc']))
+						$r_info['analytics']['ecc'][$s_cur] = $sector['error']['ecc']; // ECC
+				}
 			}
 			if ($hash_algos !== false) {
 				foreach ($r_info['hash']['full'] as $hash)
