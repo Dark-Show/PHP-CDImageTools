@@ -130,7 +130,7 @@ function dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink
 function dump_analytics ($cdemu, $dir_out, &$r_info, $hash_algos) {
 	if (!is_array ($r_info) or !isset ($r_info['analytics']))
 		return;
-	if (isset ($r_info['analytics']['sector'])) { // Dump sector types
+	if (isset ($r_info['analytics']['sector'])) { // Dump internal sector types (needed?)
 		$types = '';
 		for ($i = 0; $i < count ($r_info['analytics']['sector']); $i++)
 			$types .= chr ($r_info['analytics']['sector'][$i]);
@@ -144,101 +144,40 @@ function dump_analytics ($cdemu, $dir_out, &$r_info, $hash_algos) {
 		}
 		unset ($types);
 	}
-	if (isset ($r_info['analytics']['address'])) { // Dump invalid header addresses
-		$addr = '';
-		$k_last = array_key_last ($r_info['analytics']['address']) + 1;
-		for ($i = array_key_first ($r_info['analytics']['address']); $i <= $k_last; $i++) {
-			if (!isset ($r_info['analytics']['address'][$i])) {
-				if (strlen ($addr) > 0) {
-					$file_out = "CDADDR" . str_pad ($p_addr, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
-					echo ("  $file_out\n");
-					if (($hash = hash_write_file ($dir_out . $file_out, $addr, $hash_algos)) === false)
-						die ("Error: Could not write file '" . $dir_out . $file_out . "'\n");
-					if (is_array ($hash) and isset ($hash['hash']))
-						cli_print_hashes ($hash['hash'], $pre = '    ');
-					$addr = '';
-				}
-				if (isset ($p_addr))
-					unset ($p_addr);
-				continue;
+	if (isset ($r_info['analytics']['mode']))
+		dump_analytics_condensed ($cdemu, $r_info['analytics']['mode'], "CDMODE", ".bin", $dir_out, $hash_algos); // Dump sector mode
+	if (isset ($r_info['analytics']['address']))
+		dump_analytics_condensed ($cdemu, $r_info['analytics']['address'], "CDADDR", ".bin", $dir_out, $hash_algos); // Dump invalid header addresses
+	if (isset ($r_info['analytics']['xa']))
+		dump_analytics_condensed ($cdemu, $r_info['analytics']['xa'], "CDXA", ".bin", $dir_out, $hash_algos); // Dump XA errors
+	if (isset ($r_info['analytics']['edc']))
+		dump_analytics_condensed ($cdemu, $r_info['analytics']['edc'], "CDEDC", ".bin", $dir_out, $hash_algos); // Dump EDC errors
+	if (isset ($r_info['analytics']['ecc']))
+		dump_analytics_condensed ($cdemu, $r_info['analytics']['ecc'], "CDECC", ".bin", $dir_out, $hash_algos); // Dump ECC errors
+}
+
+// Consense analytical data and write to file
+function dump_analytics_condensed ($cdemu, &$a, $file_prefix, $file_postfix, $dir_out, $hash_algos) {
+	$out = '';
+	$k_last = array_key_last ($a) + 1;
+	for ($i = array_key_first ($a); $i <= $k_last; $i++) {
+		if (!isset ($a[$i])) {
+			if (strlen ($out) > 0) {
+				$file_out = $file_prefix . str_pad ($p_out, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . $file_postfix;
+				echo ("  $file_out\n");
+				if (($hash = hash_write_file ($dir_out . $file_out, $out, $hash_algos)) === false)
+					die ("Error: Could not write file '" . $dir_out . $file_out . "'\n");
+				if (is_array ($hash) and isset ($hash['hash']))
+					cli_print_hashes ($hash['hash'], $pre = '    ');
+				$out = '';
 			}
-			if (!isset ($p_addr))
-				$p_addr = $i;
-			$addr .= $r_info['analytics']['address'][$i];
+			if (isset ($p_out))
+				unset ($p_out);
+			continue;
 		}
-		unset ($addr);
-	}
-	if (isset ($r_info['analytics']['xa'])) { // Dump XA data
-		$xa = '';
-		$k_last = array_key_last ($r_info['analytics']['xa']) + 1;
-		for ($i = array_key_first ($r_info['analytics']['xa']); $i <= $k_last; $i++) {
-			if (!isset ($r_info['analytics']['xa'][$i])) {
-				if (strlen ($xa) > 0) {
-					$file_out = "CDXA" . str_pad ($p_xa, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
-					echo ("  $file_out\n");
-					if (($hash = hash_write_file ($dir_out . $file_out, $xa, $hash_algos)) === false)
-						die ("Error: Could not write file '" . $dir_out . $file_out."'\n");
-					if (is_array ($hash) and isset ($hash['hash']))
-						cli_print_hashes ($hash['hash'], $pre = '    ');
-					$xa = '';
-				}
-				if (isset ($p_xa))
-					unset ($p_xa);
-				continue;
-			}
-			if (!isset ($p_xa))
-				$p_xa = $i;
-			$xa .= $r_info['analytics']['xa'][$i];
-		}
-		unset ($xa);
-	}
-	if (isset ($r_info['analytics']['edc'])) { // Dump EDC errors
-		$edc = '';
-		$k_last = array_key_last ($r_info['analytics']['edc']) + 1;
-		for ($i = array_key_first ($r_info['analytics']['edc']); $i <= $k_last; $i++) {
-			if (!isset ($r_info['analytics']['edc'][$i])) {
-				if (strlen ($edc) > 0) {
-					$file_out = "CDEDC" . str_pad ($p_edc, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
-					echo ("  $file_out\n");
-					if (($hash = hash_write_file ($dir_out . $file_out, $edc, $hash_algos)) === false)
-						die ("Error: Could not write file '" . $dir_out . $file_out."'\n");
-					if (is_array ($hash) and isset ($hash['hash']))
-						cli_print_hashes ($hash['hash'], $pre = '    ');
-					$edc = '';
-				}
-				if (isset ($p_edc))
-					unset ($p_edc);
-				continue;
-			}
-			if (!isset ($p_edc))
-				$p_edc = $i;
-			$edc .= $r_info['analytics']['edc'][$i];
-		}
-		unset ($edc);
-	}
-	if (isset ($r_info['analytics']['ecc'])) { // Dump ECC errors
-		$ecc = '';
-		$k_last = array_key_last ($r_info['analytics']['ecc']) + 1;
-		for ($i = array_key_first ($r_info['analytics']['ecc']); $i <= $k_last; $i++) {
-			if (!isset ($r_info['analytics']['ecc'][$i])) {
-				if (strlen ($edc) > 0) {
-					$file_out = "CDECC" . str_pad ($p_ecc, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
-					echo ("  $file_out\n");
-					if (($hash = hash_write_file ($dir_out . $file_out, $ecc, $hash_algos)) === false)
-						die ("Error: Could not write file '" . $dir_out . $file_out."'\n");
-					if (is_array ($hash) and isset ($hash['hash']))
-						cli_print_hashes ($hash['hash'], $pre = '    ');
-					$ecc = '';
-				}
-				if (isset ($p_ecc))
-					unset ($p_ecc);
-				continue;
-			}
-			if (!isset ($p_ecc))
-				$p_ecc = $i;
-			$ecc .= $r_info['analytics']['ecc'][$i];
-		}
-		unset ($ecc);
+		if (!isset ($p_out))
+			$p_out = $i;
+		$out .= $a[$i];
 	}
 }
 

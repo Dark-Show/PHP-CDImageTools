@@ -334,26 +334,18 @@ class CDEMU {
 		}
 		
 		// Data Track Header
-		//   Sync	 - 12b
-		//   Address - 3b
-		//   Mode	 - 1b
 		$s['sync'] = substr ($sector, 0, 12);
 		$s['address'] = substr ($sector, 12, 3);
 		$s['mode'] = ord (substr ($sector, 15, 1));
 	
-		// Mode 0:
-		//   Zeroes - 2336b
+		// Mode 0
 		if ($s['mode'] == 0) {
 			$s['type'] = CDEMU_SECT_MODE0;
-			$s['data'] = substr ($sector, 16, 2336); // 2336b
+			$s['data'] = substr ($sector, 16, 2336); // 2336b (Zeroes)
 			return ($s);
 		}
 	
-		// Mode 1:
-		//   User Data - 2048b
-		//   EDC	   - 4b
-		//   Unused	   - 8b
-		//   ECC	   - 276b
+		// Mode 1
 		$m1_edc = $this->edc_compute ($sector, 0, 2064); // Header + Data
 		if (substr ($sector, 2064, 4) == $m1_edc) { // EDC Mode 1 Test
 			$s['type'] = CDEMU_SECT_MODE1;
@@ -366,6 +358,7 @@ class CDEMU {
 			return ($s);
 		}
 		
+		// Mode 2 XA
 		if (substr ($sector, 16, 4) == substr ($sector, 20, 4)) { // Detect XA extension
 			$s['subheader'] = substr ($sector, 16, 8); // Subheader - 4byte x2
 			$xa = array();
@@ -397,10 +390,7 @@ class CDEMU {
 				$xa['codeinfo'] = ord (substr ($sector, 19, 1));
 			$s['xa'] = $xa;
 
-			// XA Form 1:
-			//   User Data - 2048b
-			//   EDC	   - 4b
-			//   ECC	   - 276b
+			// XA Form 1
 			$m2xa1_edc = $this->edc_compute ($sector, 16, 2056); // XA Subheader + Data
 			if (substr ($sector, 2072, 4) == $m2xa1_edc) { // Mode 2 XA Form 1 EDC Test
 				$s['type'] = CDEMU_SECT_MODE2FORM1;
@@ -412,9 +402,7 @@ class CDEMU {
 				return ($s);
 			}
 
-			// XA Form 2:
-			//   User Data - 2324b
-			//   EDC	   - 4b
+			// XA Form 2
 			$m2xa2_edc = $this->edc_compute ($sector, 16, 2332); // XA Subheader + Data
 			if (substr ($sector, 2348, 4) == $m2xa2_edc) { // Mode 2 XA Form 2 EDC Test
 				$s['type'] = CDEMU_SECT_MODE2FORM2;
@@ -444,7 +432,7 @@ class CDEMU {
 			}
 		}
 		
-		// Trust header for mode 2 detection
+		// Trust mode for formless mode 2 detection
 		if ($s['mode'] == 2) {
 			$s['type'] = CDEMU_SECT_MODE2;
 			$s['data'] = substr ($sector, 16, 2336); // 2336b
@@ -612,7 +600,7 @@ class CDEMU {
 		$minutes = str_pad ($minutes, 2, "0", STR_PAD_LEFT);
 		$seconds = str_pad ($seconds, 2, "0", STR_PAD_LEFT);
 		$frames = str_pad ($frames, 2, "0", STR_PAD_LEFT);
-		return (hex2bin ($minutes) . hex2bin ($seconds)  . hex2bin ($frames));
+		return (hex2bin ($minutes) . hex2bin ($seconds) . hex2bin ($frames));
 	}
 	
 	// Hash image and tracks
@@ -646,6 +634,7 @@ class CDEMU {
 			$sector = $this->read (false, $analyze ? false : true);
 			if ($analyze) {
 				$r_info['analytics']['sector'][$s_cur] = $sector['type']; // Sector type
+				$r_info['analytics']['mode'][$s_cur] = $sector['mode']; // Mode
 				if (isset ($sector['address']) and $this->lba2header ($s_cur) != $sector['address'])
 					$r_info['analytics']['address'][$s_cur] = $sector['address']; // Address
 				if (isset ($sector['xa']))
