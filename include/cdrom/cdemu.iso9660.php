@@ -234,11 +234,11 @@ class ISO9660 {
 		if (isset ($file['extension']['xa'])) { // Process XA
 			if ($file['extension']['xa']['attributes']['cdda']) {
 				$f_info['type'] = ISO9660_FILE_CDDA; // CDDA Link
-				$f_info['track'] = $this->o_cdemu->get_track_by_sector ($f_info['lba'] - 150); // Track
 				$f_info['lba'] -= 150; // Adjust address backwards 2 seconds
+				$f_info['track'] = $this->o_cdemu->get_track_by_sector ($f_info['lba']); // Track
 				$f_info['length'] = ($f_info['length'] / 2048 + 150) * 2352; // Calculate length for 2352 byte sectors, add 150 sectors
 			} else if ($file['extension']['xa']['attributes']['form2'] or $file['extension']['xa']['attributes']['interleaved']) {
-				$f_info['type'] = ISO9660_FILE_XA; // Contains mode2-xa sectors
+				$f_info['type'] = ISO9660_FILE_XA; // Contains Mode2-XA sectors
 				$sectors = $f_info['length'] / 2048; // Calculate 2048 byte sectors
 				//$f_info['length'] = $f_info['length'] / 2048 * 2352;
 				$f_info['length'] = (int)$sectors * 2352 + 2048 * ($sectors - (int)$sectors); // Calculate length for 2352 byte sectors
@@ -254,7 +254,7 @@ class ISO9660 {
 	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b')
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
 	// Note: If ISO9660 file version > 1 $file_out is opened with 'a'
-	public function &file_read ($f_info, $file_out = false, $raw = false, $header = false, $hash_algos = false, $cb_progress = false) {
+	public function &file_read ($f_info, $file_out = false, $raw = false, $header = false, $ver_merge = false, $hash_algos = false, $cb_progress = false) {
 		$fail = false;
 		$length = 0;
 		$r_info = array();
@@ -272,23 +272,20 @@ class ISO9660 {
 					hash_update ($r_info['hash'][$algo], $r_info['data']);
 			}
 		}
+		if (($this->o_cdemu->seek ($f_info['lba'])) === false)
+			return ($fail);
 		if ($file_out !== false) {
 			$r_info['file_out'] = $file_out;
 			$fhm = 'w';
-			if (($fver = $this->get_fileid_version ($f_info['record']['file_id'])) !== false and $fver > 1) // Handle file versions
+			if ($ver_merge and ($fver = $this->get_fileid_version ($f_info['record']['file_id'])) !== false and $fver > 1) // Handle file versions
 				$fhm = 'a';
 			$fh = fopen ($file_out, $fhm);
 		}
-		if (($this->o_cdemu->seek ($f_info['lba'])) === false)
-			return ($fail);
 		if ($cb_progress !== false)
 			call_user_func ($cb_progress, $f_info['length'], $length);
 		while ($length < $f_info['length']) {
-			if (($data = $this->o_cdemu->read()) === false) {
-				if ($file_out !== false)
-					fclose ($fh);
-				return ($fail);
-			}
+			if (($data = $this->o_cdemu->read()) === false)
+				break;
 			if ($raw) {
 				$length += strlen ($data['sector']);
 				$r_info['data'] .= $data['sector'];
@@ -312,7 +309,13 @@ class ISO9660 {
 				call_user_func ($cb_progress, $f_info['length'], $length);
 		}
 		$r_info['length'] = $length; // Read length
+		if ($length != $f_info['length']) {
+			$r_info['error']['length'] = $f_info['length'];
+			if ($cb_progress !== false)
+				call_user_func ($cb_progress, $length, $length); // Clear
+		}
 		if ($file_out !== false) {
+			fflush ($fh);
 			fclose ($fh);
 			unset ($r_info['data']);
 		}
@@ -550,8 +553,8 @@ class ISO9660 {
 		if (!isset ($this->iso_ext['xa']))
 			$this->iso_ext['xa'] = 1;
 		$xa = array();
-		$xa['data']                         = substr ($dr['system_use'], 0, 14);
-		$xa['owner']                        = substr ($dr['system_use'], 0, 4);
+		$xa['data'] = substr ($dr['system_use'], 0, 14);
+		$xa['owner'] = substr ($dr['system_use'], 0, 4);
 		$xa['permissions'] = array();
 		$xa['permissions']['owner_read']    = (ord (substr ($dr['system_use'], 5, 1)) >> 0) & 0x01;
 		$xa['permissions']['owner_execute'] = (ord (substr ($dr['system_use'], 5, 1)) >> 2) & 0x01;
@@ -574,21 +577,21 @@ class ISO9660 {
 		$dt = array();
 		if (strlen ($data) == 7) {
 			$dt['year']  = ord (substr ($data, 0, 1)) + 1900; // Years Since 1900
-			$dt['month'] = ord (substr ($data, 1, 1));        // Month (1 - 12)
-			$dt['day']   = ord (substr ($data, 2, 1));        // Day (1 - 31)
-			$dt['hour']  = ord (substr ($data, 3, 1));        // Hour (0 - 23)
-			$dt['min']   = ord (substr ($data, 4, 1));        // Minute (0 - 59)
-			$dt['sec']   = ord (substr ($data, 5, 1));        // Second (0 - 59)
-			$dt['gmt']   = ord (substr ($data, 6, 1));        // Greenwich Mean Time Offset (GMT-12(West) to GMT+13(East))
+			$dt['month'] = ord (substr ($data, 1, 1)); // Month (1 - 12)
+			$dt['day']   = ord (substr ($data, 2, 1)); // Day (1 - 31)
+			$dt['hour']  = ord (substr ($data, 3, 1)); // Hour (0 - 23)
+			$dt['min']   = ord (substr ($data, 4, 1)); // Minute (0 - 59)
+			$dt['sec']   = ord (substr ($data, 5, 1)); // Second (0 - 59)
+			$dt['gmt']   = ord (substr ($data, 6, 1)); // Greenwich Mean Time Offset (GMT-12(West) to GMT+13(East))
 		} else if (strlen ($data) == 17) {
-			$dt['year']  = (int)substr ($data, 0, 4);         // Year (0 - 9999)
-			$dt['month'] = (int)substr ($data, 4, 2);         // Month (1 - 12)
-			$dt['day']   = (int)substr ($data, 6, 2);         // Day (1 - 31)
-			$dt['hour']  = (int)substr ($data, 8, 2);         // Hour (0 - 23)
-			$dt['min']   = (int)substr ($data, 10, 2);        // Minute (0 - 59)
-			$dt['sec']   = (int)substr ($data, 12, 2);        // Second (0 - 59)
-			$dt['hsec']  = (int)substr ($data, 14, 2);        // Hundreth Second (0 - 99)
-			$dt['gmt']   = ord (substr ($data, 16, 1));       // Greenwich Mean Time Offset (GMT-12(West) to GMT+13(East))
+			$dt['year']  = (int)substr ($data, 0, 4); // Year (0 - 9999)
+			$dt['month'] = (int)substr ($data, 4, 2); // Month (1 - 12)
+			$dt['day']   = (int)substr ($data, 6, 2); // Day (1 - 31)
+			$dt['hour']  = (int)substr ($data, 8, 2); // Hour (0 - 23)
+			$dt['min']   = (int)substr ($data, 10, 2); // Minute (0 - 59)
+			$dt['sec']   = (int)substr ($data, 12, 2); // Second (0 - 59)
+			$dt['hsec']  = (int)substr ($data, 14, 2); // Hundreth Second (0 - 99)
+			$dt['gmt']   = ord (substr ($data, 16, 1)); // Greenwich Mean Time Offset (GMT-12(West) to GMT+13(East))
 		} else
 			return (false);
 		
