@@ -26,6 +26,7 @@ class CDEMU {
 	private $lut = array(); // EDC/ECC LUT
 	private $fh = 0; // File handle
 	private $buffer = 0; // Sector buffer
+	private $buffer_limit = true; // Limit buffer
 	private $CD = 0; // CD variable tracking
 	private $track = 0; // Current track
 	private $sector = 0; // Current sector
@@ -35,6 +36,34 @@ class CDEMU {
 	function __construct() {
 		$this->lut_init(); // Init EDC/ECC LUTs
   	}
+	
+	// Initilize Emulated CD
+	private function init() {
+		$this->buffer = 0; // Null buffer
+		$this->track = 1; // Current track
+		$this->sector = 0; // Current sector
+		
+		// Init CD image information
+		$this->CD = array();
+		$this->CD['multifile'] = false; // Default to single file
+		$this->CD['sector_count'] = 0; // Sector count
+		$this->CD['track_count'] = 1; // Init track count to 1
+		$this->CD['track'] = array(); // Track information
+	}
+	
+	// Close file and clean-up internal variables
+	public function eject() {
+		if (is_resource ($this->fh))
+			fclose ($this->fh);
+		$this->fh = 0;
+		$this->buffer = array();
+		$this->CD = 0;
+		$this->track = 0;
+		$this->sector = 0;
+		$this->sect_list = array(); // Clear sector access list
+		$this->sect_list_en = false; // Disable sector access list
+		$this->buffer_limit = true;
+	}
 	
 	// Load CUE file
 	public function load_cue ($cue_file) {
@@ -115,7 +144,6 @@ class CDEMU {
 		$this->CD['multifile'] = isset ($multifile);
 		$this->CD['sector_count'] = $sector_count;
 		$this->CD['track_count'] = count ($disk);
-		$this->CD['track'] = array();
 		for ($i = 1; $i <= $this->CD['track_count']; $i++) { // Process each track
 			$this->CD['track'][$i] = array(); // init track
 			$this->CD['track'][$i]['file'] = $path . $disk[$i]['file']; // File
@@ -159,10 +187,9 @@ class CDEMU {
 				return (true);
 			$audio = true; // Assume audio track
 		}
-		if (!is_array ($this->CD) or !is_array ($this->CD['track'])) { // Init check
+		if (!is_array ($this->CD) or !is_array ($this->CD['track'])) // Init check
 			$this->init();
-			$this->CD['track'] = array();
-		} else {
+		else {
 			$this->CD['multifile'] = true; // Set multi-file
 			$this->CD['track_count']++;	// Increment track count
 		}
@@ -192,7 +219,6 @@ class CDEMU {
 			return (false);
 		}
 		$this->init(); // Init
-		$this->CD['track'] = array();
 		$this->CD['track'][$this->CD['track_count']] = array();
 		$this->CD['track'][$this->CD['track_count']]['file'] = $file;
 		$this->CD['track'][$this->CD['track_count']]['file_format'] = CDEMU_FILE_ISO;
@@ -201,6 +227,106 @@ class CDEMU {
 		$this->CD['track'][$this->CD['track_count']]['length'] = filesize ($file) / self::iso_sector_size;
 		$this->CD['track'][$this->CD['track_count']]['index'][0] = $this->CD['track'][$this->CD['track_count']]['lba'];
 		$this->CD['sector_count'] += $this->CD['track'][$this->CD['track_count']]['length'];
+		return (true);
+	}
+	
+	// Load index.cdemu file
+	public function load_cdemu_index ($file) {
+		if (!file_exists ($file))
+			return (false);
+		$fp = fopen ($file, 'r');
+		$header = fread ($fp, 5);
+		fclose ($fp);
+		if ($header != "CDEMU") // Header check
+			return (false);
+		$this->init(); // Init
+		$path = explode ("/", $file);
+		$file = $path[count ($path) - 1];
+		$path[count ($path) - 1] = '';
+		if (($path = implode ('/', $path)) == '')
+			$path = './';
+		$r_i = file ($path . $file); // Text index
+		$multifile = 0;
+		foreach ($r_i as $k_i => $i) {
+			$i = explode (' ', trim ($i));
+			switch (strtolower ($i[0])) {
+				case 'length':
+					$this->CD['sector_count'] = (int)trim ($i[1]);
+					break;
+				case 'track':
+					if (count ($i) < 4)
+						return (false);
+					$track = (int)trim ($i[1]); // Track
+					if ($track > $this->CD['track_count'])
+						$this->CD['track_count'] = $track;
+					$this->CD['track'][$track]['file_format'] = CDEMU_FILE_CDEMU;
+					$this->CD['track'][$track]['format'] = strtolower (trim ($i[2])) == 'audio' ? CDEMU_TRACK_AUDIO : CDEMU_TRACK_DATA;
+					$this->CD['track'][$track]['lba'] = (int)trim ($i[3]);
+					for ($j = 3; $j < count ($i); $j++)
+						$this->CD['track'][$track]['index'][] = (int)trim ($i[$j]);
+					if ($track == 1 and $this->CD['track'][$track]['format'] == CDEMU_TRACK_DATA) {
+						$this->CD['track'][$track]['index'][1] = $this->CD['track'][$track]['index'][0];
+						unset ($this->CD['track'][$track]['index'][0]);
+					}
+					break;
+				case 'cdmode':
+					$data = file_get_contents ($path . "CDMODE" . trim ($i[1]) . ".bin");
+					$lba = (int)trim ($i[1]);
+					for ($j = 0; $j < strlen ($data); $j++)
+						$this->CD['cdemu']['sector'][$lba + $j]['mode'] = $data[$j];
+					break;
+				case 'cdaddr':
+					$data = file_get_contents ($path . "CDADDR" . trim ($i[1]) . ".bin");
+					$lba = (int)trim ($i[1]);
+					for ($j = 0; $j < strlen ($data); $j++)
+						$this->CD['cdemu']['sector'][$lba + $j]['address'] = $data[$j];
+					break;
+				case 'cdxa':
+					$data = file_get_contents ($path . "CDXA" . trim ($i[1]) . ".bin");
+					$lba = (int)trim ($i[1]);
+					for ($j = 0; $j < strlen ($data); $j += 4)
+						$this->CD['cdemu']['sector'][$lba + ($j / 4)]['xa'] = $this->parse_xa (substr ($data, $j, 4));
+					break;
+				case 'cdedc':
+					$data = file_get_contents ($path . "CDEDC" . trim ($i[1]) . ".bin");
+					$lba = (int)trim ($i[1]);
+					for ($j = 0; $j < strlen ($data); $j += 4)
+						$this->CD['cdemu']['sector'][$lba + ($j / 4)]['edc'] = substr ($data, $j, 4);
+					break;
+				case 'cdedc_f2':
+					$this->CD['cdemu']['form2edc'] = (bool)trim ($i[1]);
+					break;
+				case 'cdecc':
+					$data = file_get_contents ($path . "CDECC" . trim ($i[1]) . ".bin");
+					$lba = (int)trim ($i[1]);
+					for ($j = 0; $j < strlen ($data); $j += 276)
+						$this->CD['cdemu']['sector'][$lba + ($j / 276)]['ecc'] = substr ($data, $j, 276);
+					break;
+				case 'lba':
+					if (!$this->CD['multifile'] and ++$multifile > 1)
+						$this->CD['multifile'] = true;
+					if (!isset ($i[2])) // Partial data
+						$this->CD['cdemu']['lba'][(int)trim ($i[1])] = $path . "LBA" . trim ($i[1]) . ".bin";
+					else { // Full audio
+						$track = $this->get_track_by_sector ((int)trim ($i[1]));
+						if (($format = strtolower (trim ($i[2]))) != "cdda") // CDDA check
+							return (false);
+						//$this->CD['track'][$track]['file'] = $path . "LBA" . trim ($i[1]) . ".cdda";
+						//$this->CD['track'][$track]['file_format'] = CDEMU_FILE_BIN;
+						$this->CD['cdemu']['lba'][(int)trim ($i[1])] = $path . "LBA" . trim ($i[1]) . ".cdda";
+					}
+					break;
+				default:
+					break;
+			}
+		}
+		for ($i = 1; $i <= $this->CD['track_count']; $i++) { // Process each track
+			if ($i + 1 > $this->CD['track_count'])
+				$this->CD['track'][$i]['length'] = $this->CD['sector_count'] - $this->CD['track'][$i]['lba']; // Length using image length
+			else
+				$this->CD['track'][$i]['length'] = $this->CD['track'][$i + 1]['lba'] - $this->CD['track'][$i]['lba']; // Length using next track
+		}
+		$this->seek (0);
 		return (true);
 	}
 	
@@ -240,6 +366,9 @@ class CDEMU {
 	
 	// Read currect sector from image, optionally seek and/or limit processing to only return sector data
 	public function &read ($seek = false, $limit_processing = false) {
+		if ($this->CD['track'][$this->track]['file_format'] == CDEMU_FILE_CDEMU) {
+			return ($this->cdemu_read ($seek, $limit_processing));
+		}
 		$fail = false;
 		if ($seek !== false and $seek != $this->sector and !$this->seek ($seek))
 			return ($fail); // Seek failed
@@ -254,14 +383,16 @@ class CDEMU {
 			fclose ($this->fh);
 		if (!is_resource ($this->fh)) { // If no file is open, open file and seek
 			$this->fh = fopen ($this->CD['track'][$this->track]['file'], 'r'); // Open track bin
-			$this->buffer = array(); // Invalidate buffer
+			if ($this->buffer_limit)
+				$this->buffer = array(); // Invalidate buffer
 			$pos = $this->sector;
 			if ($this->CD['multifile'])
 				$pos -= $this->CD['track'][$this->track]['lba']; // Start of track minus current sector
 			$pos = fseek ($this->fh, $pos * $sector_size);
 		}
 		if (!isset ($this->buffer[$this->sector])) { // Needed sector not in buffer
-			$this->buffer = array(); // Clear buffer
+			if (!is_array ($this->buffer) or $this->buffer_limit)
+				$this->buffer = array(); // Clear buffer
 			for ($i = $this->sector; $i < ($this->sector + 250) and $i < $this->CD['sector_count']; $i++) { // Load 10 sectors into buffer
 				$data = fread ($this->fh, $sector_size); // Read sector
 				if (strlen ($data) < $sector_size)
@@ -291,31 +422,236 @@ class CDEMU {
 		return ($fail); // EOF
 	}
 	
-	// Close file and clean-up internal variables
-	public function eject() {
-		if (is_resource ($this->fh))
-			fclose ($this->fh);
-		$this->fh = 0;
-		$this->buffer = 0;
-		$this->CD = 0;
-		$this->track = 0;
-		$this->sector = 0;
-		$this->sect_list = array(); // Clear sector access list
-		$this->sect_list_en = false; // Disable sector access list
+	
+	// Read currect sector from image, optionally seek and/or limit processing to only return sector data
+	public function &cdemu_read ($seek = false, $limit_processing = false) {
+		$fail = false;
+		if ($seek !== false and $seek != $this->sector and !$this->seek ($seek))
+			return ($fail); // Seek failed
+		
+		// Choose sector size based on file format
+		if (!isset ($this->buffer[$this->sector])) { // Needed sector not in buffer
+			if (!is_array ($this->buffer) or $this->buffer_limit)
+				$this->buffer = array(); // Invalidate buffer
+			for ($i = $this->sector; $i < ($this->sector + 250) and $i < $this->CD['sector_count']; $i++) { // Load sectors into buffer
+				$sector_size = $this->cdemu_sector_size ($i); // CDEMU variable sector size
+				if (!$this->cdemu_seek ($i))
+					return ($fail);
+				$data = fread ($this->fh, $sector_size); // Read sector
+				$this->buffer[$i] = $this->cdemu_gen_sector ($data, $i); // Generate CDEMU sector
+			}
+		}
+		
+		// If we have our sector in buffer, return and increment
+		// Note: If we overflow past EOF we will return false on the next read
+		if (isset ($this->buffer[$this->sector]) and $this->buffer[$this->sector] !== false) {
+			$sector = &$this->buffer[$this->sector]; // Save sector
+			if ($this->sect_list_en)
+				$this->sect_list[$this->sector] = isset ($this->sect_list[$this->sector]) ? $this->sect_list[$this->sector]++ : 1; // Increment access list
+			$this->sector++; // Increment sector	
+			$this->track_detect(); // Detect track after sector change
+			return ($sector); // return sector
+		}
+		return ($fail); // EOF
 	}
 	
-	// Initilize Emulated CD
-	private function init() {
-		$this->buffer = 0; // Null buffer
-		$this->track = 1; // Current track
-		$this->sector = 0; // Current sector
-		
-		// Init CD image information
-		$this->CD = array();
-		$this->CD['multifile'] = false; // Default to single file
-		$this->CD['sector_count'] = 0; // Sector count
-		$this->CD['track_count'] = 1; // Init track count to 1
-		$this->CD['track'] = 0; // Table of contents
+	private function cdemu_seek ($sector) {
+		foreach (array_keys ($this->CD['cdemu']['lba']) as $s) {
+			if ($s <= $sector)
+				$lba = $s;
+		}
+		if (!isset ($lba))
+			return (false);
+		if (is_resource ($this->fh)) {
+			$m_fh = stream_get_meta_data ($this->fh);
+			if ($m_fh['uri'] != $this->CD['cdemu']['lba'][$lba]) {
+				fclose ($this->fh);
+				$this->fh = fopen ($this->CD['cdemu']['lba'][$lba], 'r'); // Open data segment
+			}
+		} else
+			$this->fh = fopen ($this->CD['cdemu']['lba'][$lba], 'r'); // Open data segment
+		$p = 0;
+		if ($lba != $sector) {
+			for ($i = $lba; $i < $sector; $i++)
+				$p += $this->cdemu_sector_size ($i);
+		}
+		//echo ("cdemu_seek($p): " . $this->CD['cdemu']['lba'][$lba] . "\n");
+		if (ftell ($this->fh) != $p and fseek ($this->fh, $p) != 0) // Seek to proper file location
+			return (false);
+		return (true);
+	}
+	
+	private function cdemu_sector_size ($sector) {
+		if (!isset ($this->CD['cdemu']['sector'][$sector]))
+			return (2352); // Audio
+		else if ($this->CD['cdemu']['sector'][$sector]['mode'] == 0)
+			return (2336); // Mode 0
+		else if ($this->CD['cdemu']['sector'][$sector]['mode'] == 1)
+			return (2048); // Mode 1
+		else if ($this->CD['cdemu']['sector'][$sector]['mode'] > 1) {
+			if (isset ($this->CD['cdemu']['sector'][$sector]['xa'])) {
+				if ($this->CD['cdemu']['sector'][$sector]['xa']['submode']['form'] == 1)
+					return (2048); // Mode 2 XA Form 1
+				else
+					return (2324); // Mode 2 XA Form 2
+			} else
+				return (2336); // Mode 2 (Formless)
+		}
+	}
+	
+	private function &cdemu_gen_sector (&$data, $lba) {
+		if (!isset ($this->CD['cdemu']['sector'][$lba])) {
+			$data = $this->gen_sector_audio ($data); // Audio
+			return ($data);
+		}
+		$mode = isset ($this->CD['cdemu']['sector'][$lba]['mode']) ? $this->CD['cdemu']['sector'][$lba]['mode'] : false;
+		$addr = isset ($this->CD['cdemu']['sector'][$lba]['address']) ? $this->CD['cdemu']['sector'][$lba]['address'] : false;
+		$xa = isset ($this->CD['cdemu']['sector'][$lba]['xa']) ? $this->CD['cdemu']['sector'][$lba]['xa'] : false;
+		if (isset ($this->CD['cdemu']['form2edc']) and !$this->CD['cdemu']['form2edc'] and $this->CD['cdemu']['sector'][$lba]['xa']['submode']['form'] == 2)
+			$edc = "\x00\x00\x00\x00";
+		else
+			$edc = isset ($this->CD['cdemu']['sector'][$lba]['edc']) ? $this->CD['cdemu']['sector'][$lba]['edc'] : false;
+		$ecc = isset ($this->CD['cdemu']['sector'][$lba]['ecc']) ? $this->CD['cdemu']['sector'][$lba]['ecc'] : false;
+		if ($this->CD['cdemu']['sector'][$lba]['mode'] == 0)
+			$data = $this->gen_sector_mode0 ($addr === false ? $lba : $addr, $mode); // Mode 0
+		else if ($this->CD['cdemu']['sector'][$lba]['mode'] == 1)
+			$data = $this->gen_sector_mode1 ($data, $addr === false ? $lba : $addr, $mode, $edc, $ecc); // Mode 1
+		else if ($this->CD['cdemu']['sector'][$lba]['mode'] > 1) {
+			if (isset ($this->CD['cdemu']['sector'][$lba]['xa']))
+				$data = $this->gen_sector_mode2xa ($data, $addr === false ? $lba : $addr, $xa, $mode, $edc, $ecc); // Mode 2 XA Form 1/2
+			else
+				$data = $this->gen_sector_mode2 ($data, $addr === false ? $lba : $addr, $mode); // Mode 2 (Formless)
+		}
+		return ($data);
+	}
+	
+	// Generate Audio sector
+	private function &gen_sector_audio (&$data) {
+		if (strlen ($data) > 2352)
+			$data = substr ($data, 0, 2352); // Clip
+		$s = array();
+		$s['sector'] = str_pad ($data, 2352, "\x00");
+		$s['type'] = CDEMU_SECT_AUDIO;
+		$s['data'] = $s['sector'];
+		return ($s);
+	}
+	
+	// Generate Mode 0 sector
+	private function &gen_sector_mode0 ($lba, $mode = false) {
+		$s = array();
+		$s['sync'] = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
+		$s['address'] = $this->lba2header ($lba);
+		$s['mode'] = $mode === false ? 0 : $mode;
+		$s['type'] = CDEMU_SECT_MODE0;
+		$s['data'] = str_pad ($data, 2336, "\x00");
+		$s['sector'] = $s['sync'] . $this->lba2header ($lba) . chr ($s['mode']) . $s['data'];
+		return ($s);
+	}
+	
+	// Generate Mode 1 sector
+	private function &gen_sector_mode1 (&$data, $lba, $mode = false, $edc = false, $ecc = false) {
+		if (strlen ($data) > 2048)
+			$data = substr ($data, 0, 2048); // Clip
+		$s = array();
+		$s['sync'] = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
+		$s['address'] = $this->lba2header ($lba);
+		$s['mode'] = $mode === false ? 1 : $mode;
+		$s['type'] = CDEMU_SECT_MODE1;
+		$s['data'] = str_pad ($data, 2048, "\x00");
+		$s['sector'] = $s['sync'] . $this->lba2header ($lba) . chr ($s['mode']) . $s['data'];
+		if ($edc === false) {
+			$s['edc'] = $this->edc_compute ($s['sector'], 0, 2064);
+			$s['reserved'] = "\x00\x00\x00\x00\x00\x00\x00\x00";
+			$s['sector'] .= $s['edc'] . $s['reserved'];
+			if ($ecc === false)
+				$s['ecc'] = $this->ecc_compute ($s['sector']);
+			else {
+				$s['ecc'] = $ecc;
+				$s['error']['ecc'] = $this->ecc_compute ($s['sector']);
+			}
+			$s['sector'] .= $s['ecc'];
+		} else {
+			$s['edc'] = $edc;
+			$s['error']['edc'] = $this->edc_compute ($s['sector'], 0, 2064);
+			$s['reserved'] = "\x00\x00\x00\x00\x00\x00\x00\x00";
+			if ($ecc === false) {
+				$s['sector'] .= $s['edc'] . $s['reserved'];
+				$s['ecc'] = $this->ecc_compute ($s['sector']);
+				$s['sector'] .= $s['ecc'];
+			} else {
+				$s['ecc'] = $ecc;
+				$s['error']['ecc'] = $this->ecc_compute ($s['sector'] . $s['error']['edc'] . $s['reserved']);
+				$s['sector'] .= $s['edc'] . $s['reserved'] . $s['ecc'];
+			}
+		}
+		return ($s);
+	}
+	
+	// Generate Mode 2 sector
+	private function &gen_sector_mode2 (&$data, $lba, $mode = false) {
+		$s = array();
+		$s['sync'] = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
+		$s['address'] = $this->lba2header ($lba);
+		$s['mode'] = $mode === false ? 0 : $mode;
+		$s['type'] = CDEMU_SECT_MODE2;
+		$s['data'] = str_pad ($data, 2336, "\x00");
+		$s['sector'] = $s['sync'] . $this->lba2header ($lba) . chr ($s['mode']) . $s['data'];
+		return ($s);
+	}
+	
+	// Generate Mode 2 XA Form 1/2 sector
+	private function &gen_sector_mode2xa (&$data, $lba, $xa, $mode = false, $edc = false, $ecc = false) {
+		if ($this->CD['cdemu']['sector'][$lba]['xa']['submode']['form'] == 1) {
+			if (strlen ($data) > 2048)
+				$data = substr ($data, 0, 2048); // Clip
+		} else {
+			if (strlen ($data) > 2324)
+				$data = substr ($data, 0, 2324); // Clip
+		}
+		$s = array();
+		$s['sync'] = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
+		$s['address'] = $this->lba2header ($lba);
+		$s['mode'] = $mode === false ? 2 : $mode;
+		$s['subheader'] = $xa['raw'] . $xa['raw'];
+		$s['xa'] = $xa;
+		$s['type'] = $this->CD['cdemu']['sector'][$lba]['xa']['submode']['form'] == 1 ? CDEMU_SECT_MODE2FORM1 : CDEMU_SECT_MODE2FORM2;
+		$s['data'] = str_pad ($data, $this->CD['cdemu']['sector'][$lba]['xa']['submode']['form'] == 1 ? 2048 : 2324, "\x00");
+		$s['sector'] = $s['sync'] . $s['address'] . chr ($s['mode']) . $s['subheader'] . $s['data'];
+		if ($xa['submode']['form'] == 1) { // Form 1
+			if ($edc === false) {
+				$s['edc'] = $this->edc_compute ($s['sector'], 16, 2056);
+				$s['sector'] .= $s['edc'];
+				if ($ecc === false)
+					$s['ecc'] = $this->ecc_compute ($s['sector']);
+				else {
+					$s['ecc'] = $ecc;
+					$s['error']['ecc'] = $this->ecc_compute ($s['sector']);
+				}
+				$s['sector'] .= $s['ecc'];
+			} else {
+				$s['edc'] = $edc;
+				$s['error']['edc'] = $this->edc_compute ($s['sector'], 16, 2056);
+				if ($ecc === false) {
+					$s['sector'] .= $s['edc'];
+					$s['ecc'] = $this->ecc_compute ($s['sector']);
+					$s['sector'] .= $s['ecc'];
+				} else {
+					$s['ecc'] = $ecc;
+					$s['error']['ecc'] = $this->ecc_compute ($s['sector'] . $s['error']['edc']);
+					$s['sector'] .= $s['edc'] . $s['ecc'];
+				}
+			}
+		} else { // Form 2
+			if ($edc === false) {
+				$s['edc'] = $this->edc_compute ($s['sector'], 16, 2332);
+				$s['sector'] .= $s['edc'];
+			} else {
+				$s['edc'] = $edc;
+				$s['error']['edc'] = $this->edc_compute ($s['sector'], 16, 2332);
+				$s['sector'] .= $s['edc'];
+			}
+		}
+		return ($s);
 	}
 	
 	// Parse BIN sector into usable format
@@ -444,26 +780,6 @@ class CDEMU {
 		} else //if ($xa['submode']['video'] or $xa['submode']['data']) // Format Video / Data / Other
 			$xa['codeinfo'] = ord ($data[3]);
 		return ($xa);
-	}
-	
-	// Generate Mode 1 sector
-	private function &gen_sector_mode1 (&$data, $lba) {
-		if (strlen ($data) < 2048)
-			$data = str_pad ($data, 2048, "\x00"); // Pad
-		else if (strlen ($data) > 2048)
-			$data = substr ($data, 0, 2048); // Clip
-		$s = array();
-		$s['sync'] = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
-		$s['address'] = $this->lba2header ($lba);
-		$s['mode'] = 1;
-		$s['type'] = CDEMU_SECT_MODE1;
-		$s['data'] = $data;
-		$s['sector'] = $s['sync'] . $this->lba2header ($lba) . "\x01" . $data;
-		$s['edc'] = $this->edc_compute ($s['sector'], 0, 2064);
-		$s['reserved'] = "\x00\x00\x00\x00\x00\x00\x00\x00";
-		$s['sector'] .= $s['edc'] . $s['reserved'];
-		$s['ecc'] = $this->ecc_compute ($s['sector']);
-		return ($s);
 	}
 	
 	// Populate LUTs for EDC and ECC
@@ -648,11 +964,18 @@ class CDEMU {
 					$r_info['analytics']['address'][$s_cur] = $sector['address']; // Address
 				if (isset ($sector['xa']))
 					$r_info['analytics']['xa'][$s_cur] = $sector['xa']['raw']; // XA
-				if (isset ($sector['edc']) and isset ($sector['ecc']) and isset ($sector['error'])) {
+				if (isset ($sector['error']) and (isset ($sector['edc']) or isset ($sector['ecc']))) {
 					if (isset ($sector['error']['edc']))
-						$r_info['analytics']['edc'][$s_cur] = $sector['error']['edc']; // EDC
+						$r_info['analytics']['edc'][$s_cur] = $sector['edc']; // EDC
+					if (isset ($sector['xa']) and $sector['xa']['submode']['form'] == 2) {
+						$r_info['analytics']['form2_edc_log'][] = $s_cur; // Track sectors for optional error removal
+						if ($sector['edc'] != "\x00\x00\x00\x00") // Detect optional XA Form 2 EDC
+							$r_info['analytics']['form2edc'] = true;
+						else if (!isset ($r_info['analytics']['form2edc']))
+							$r_info['analytics']['form2edc'] = false;
+					}
 					if (isset ($sector['error']['ecc']))
-						$r_info['analytics']['ecc'][$s_cur] = $sector['error']['ecc']; // ECC
+						$r_info['analytics']['ecc'][$s_cur] = $sector['ecc']; // ECC
 				}
 			}
 			if ($hash_algos !== false) {
@@ -663,6 +986,13 @@ class CDEMU {
 			}
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $s_len, $s_cur + 1);
+		}
+		if (isset ($r_info['analytics']['form2edc']) and !$r_info['analytics']['form2edc']) { // Remove all optional EDC values
+			foreach ($r_info['analytics']['form2_edc_log'] as $lba) {
+				if ($r_info['analytics']['edc'][$lba] == "\x00\x00\x00\x00")
+					unset ($r_info['analytics']['edc'][$lba]);
+			}
+			unset ($r_info['analytics']['form2_edc_log']);
 		}
 		if ($hash_algos !== false) {
 			foreach ($r_info['hash']['full'] as $algo => $hash)
@@ -796,7 +1126,7 @@ class CDEMU {
 		if ($sector_end === false)
 			$sector_end = $this->get_length (true);
 		$gap = false;
-		for ($i = $sector_start; $i <= $sector_end; $i++) {
+		for ($i = $sector_start; $i < $sector_end; $i++) {
 			if ($gap === false and !isset ($access[$i]))
 				$sectors[($gap = $i)] = 1;
 			else if ($gap !== false and !isset ($access[$i]))
@@ -805,6 +1135,15 @@ class CDEMU {
 				$gap = false;
 		}
 		return ($sectors);
+	}
+	
+	
+	public function enable_buffer_limit() {
+		$this->buffer_limit = true;
+	}
+	
+	public function disable_buffer_limit() {
+		$this->buffer_limit = false;
 	}
 	
 	// Enable accessed sector list

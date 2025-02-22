@@ -23,6 +23,7 @@ function cli_process_argv ($argv) {
 	$filename_trim = false;
 	$cdda_symlink = false;
 	$xa_riff = false;
+	$ram = false;
 	for ($i = 1; $i < count ($argv); $i++) {
 		switch ($argv[$i]) {
 			case '-cue':
@@ -75,6 +76,9 @@ function cli_process_argv ($argv) {
 			case '-hash':
 				$hash_algos = ['crc32b', 'sha256', 'md5'];
 				break;
+			case '-ram':
+				$ram = true;
+				break;
 			default:
 				cli_display_help ($argv);
 		}
@@ -88,6 +92,8 @@ function cli_process_argv ($argv) {
 		die ("Error: Could not create directory '$dir_out'\n");
 	
 	$cdemu = new CDEMU;
+	if ($ram)
+		$cdemu->disable_buffer_limit();
 	if (isset ($cue) and !$cdemu->load_cue ($cue))
 		die ("Error: Failed to load cue file\n");
 	
@@ -115,6 +121,8 @@ function dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink
 		$index['LENGTH'] = $cdemu->get_length (true); // Image length in sectors
 		$CD = $cdemu->get_layout();
 		// TODO: Support session listings (requires CDEMU support)
+		if (isset ($r_info['analytics']['form2edc']))
+			$index['CDEDC_F2'] = $r_info['analytics']['form2edc'] ? 1 : 0;
 		foreach ($CD['track'] as $track => $t) {
 			foreach ($t['index'] as $ii => $vv)
 				$t['index'][$ii] = str_pad ($vv, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT);
@@ -151,7 +159,22 @@ function dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink
 	}
 	if ($full_dump) {
 		dump_index ($dir_out . "index.cdemu", $index);
-		//TODO: Verify integrity of dump and amend index if needed
+		// Verify integrity of dump
+		$cdemu2 = new CDEMU;
+		$cdemu2->load_cdemu_index ($dir_out . "index.cdemu");
+		$cdemu->seek (0);
+		$cdemu2->seek (0);
+		for ($i = 0; $i < $cdemu->get_length (true); $i++) {
+			$d1 = $cdemu->read();
+			$d2 = $cdemu2->read();
+			cli_dump_progress ($cdemu->get_length (true) - 1, $i);
+			if ($d1['sector'] != $d2['sector']) {
+				echo ("  Verification: FAIL ($i)\n");
+				return (false);
+				// TODO: Don't fail, dump raw sectors and amend index
+			}
+		}
+		echo ("  Verification: PASS\n");
 	}
 	return (true);
 }
@@ -381,16 +404,18 @@ function cli_dump_progress ($length, $pos) {
 }
 
 function cli_display_help ($argv) {
-	echo ("  Arguments:\n");
+	echo ("  Loading Arguments:\n");
 	echo ("    -cue \"FILE.CUE\"    Input CUE file\n");
 	echo ("    -iso \"FILE.ISO\"    Input ISO file\n");
 	echo ("    -bin \"FILE.BIN\"    Input BIN file\n");
 	echo ("    -output \"PATH/\"    Output directory\n");
+	echo ("    -ram               Load all read sectors into ram\n");
 	echo ("    -hash              Hash image and output files using: crc32b, sha256, md5\n\n");
+	echo ("  Dump Type Arguments:\n");
 	echo ("    -full              Dump image to format that can be reassembled\n");
 	echo ("    -trim_name         Trim version information from ISO9660 filenames\n");
 	echo ("    -link              Create symbolic links for XA-CDDA files\n");
-	echo ("    -riff              Dump XA files to RIFF-CDXA\n");
+	echo ("    -riff              Dump XA files to RIFF-CDXA\n\n");
 	echo ("  Example Usages:\n");
 	echo ("    " . $argv[0] . " -cue \"input.cue\" -output \"output/\"\n");
 	echo ("    " . $argv[0] . " -iso \"input.iso\" -output \"output/\"\n");

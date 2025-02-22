@@ -6,6 +6,7 @@ const CDEMU_RET_ERROR = false;
 // File Formats
 const CDEMU_FILE_BIN = 0; // 2352b sector
 const CDEMU_FILE_ISO = 1; // 2048b sector
+const CDEMU_FILE_CDEMU = 2; // Variable sector
 
 // Track Types
 const CDEMU_TRACK_AUDIO = 0; // Audio
