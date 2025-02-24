@@ -26,6 +26,14 @@ function cli_process_argv ($argv) {
 	$ram = false;
 	for ($i = 1; $i < count ($argv); $i++) {
 		switch ($argv[$i]) {
+			case '-cdemu':
+				if (isset ($cue) or isset ($iso) or isset ($bin) or !isset ($argv[$i + 1]))
+					die ("Error: Invalid arguments\n");
+				$index = $argv[$i + 1];
+				if (!is_file ($index))
+					die ("Error: Can not access '$index'\n");
+				$i++;
+				break;
 			case '-cue':
 				if (isset ($iso) or isset ($bin) or !isset ($argv[$i + 1]))
 					die ("Error: Invalid arguments\n");
@@ -94,6 +102,9 @@ function cli_process_argv ($argv) {
 	$cdemu = new CDEMU;
 	if ($ram)
 		$cdemu->disable_buffer_limit();
+	if (isset ($index) and !$cdemu->load_cdemu_index ($index))
+		die ("Error: Failed to load cdemu index file\n");
+	
 	if (isset ($cue) and !$cdemu->load_cue ($cue))
 		die ("Error: Failed to load cue file\n");
 	
@@ -158,25 +169,31 @@ function dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink
 		}
 	}
 	if ($full_dump) {
-		dump_index ($dir_out . "index.cdemu", $index);
-		// Verify integrity of dump
-		$cdemu2 = new CDEMU;
-		$cdemu2->load_cdemu_index ($dir_out . "index.cdemu");
-		$cdemu->seek (0);
-		$cdemu2->seek (0);
-		for ($i = 0; $i < $cdemu->get_length (true); $i++) {
-			$d1 = $cdemu->read();
-			$d2 = $cdemu2->read();
-			cli_dump_progress ($cdemu->get_length (true) - 1, $i);
-			if ($d1['sector'] != $d2['sector']) {
-				echo ("  Verification: FAIL ($i)\n");
-				return (false);
-				// TODO: Don't fail, dump raw sectors and amend index
-			}
+		dump_index ($dir_out . "index.cdemu", $index); // Dump CDEMU index
+		$c_sect = dump_verify ($cdemu, $dir_out);
+		if (count ($c_sect) > 0) {
+			$index['CDSECT'] = dump_analytics_condensed ($cdemu, $c_sect, "CDSECT", ".bin", $dir_out, $hash_algos); // Dump sector corrections
+			dump_index ($dir_out . "index.cdemu", $index); // Redump CDEMU index
 		}
-		echo ("  Verification: PASS\n");
 	}
 	return (true);
+}
+
+// Verify integrity of dump
+function &dump_verify ($cdemu, $dir_out) {
+	$c_sect = array(); // Sector corrections array
+	$cdemu2 = new CDEMU;
+	$cdemu2->load_cdemu_index ($dir_out . "index.cdemu");
+	$cdemu->seek (0);
+	$cdemu2->seek (0);
+	for ($i = 0; $i < $cdemu->get_length (true); $i++) {
+		$d1 = $cdemu->read();
+		$d2 = $cdemu2->read();
+		cli_dump_progress ($cdemu->get_length (true), $i + 1);
+		if ($d1['sector'] != $d2['sector'])
+			$c_sect[$i] = $d1['sector'];
+	}
+	return ($c_sect);
 }
 
 // Dump index data to $file
@@ -198,7 +215,7 @@ function dump_index ($file, $index) {
 }
 
 // Dump image analytical data to according files
-function dump_analytics ($cdemu, $dir_out, &$r_info, $hash_algos) {
+function &dump_analytics ($cdemu, $dir_out, &$r_info, $hash_algos) {
 	$index = array();
 	if (!is_array ($r_info) or !isset ($r_info['analytics']))
 		return ($index);
@@ -216,7 +233,7 @@ function dump_analytics ($cdemu, $dir_out, &$r_info, $hash_algos) {
 }
 
 // Consense analytical data and write to file
-function dump_analytics_condensed ($cdemu, &$a, $file_prefix, $file_postfix, $dir_out, $hash_algos) {
+function &dump_analytics_condensed ($cdemu, &$a, $file_prefix, $file_postfix, $dir_out, $hash_algos) {
 	$index = array();
 	$out = '';
 	$k_last = array_key_last ($a) + 1;
@@ -267,6 +284,8 @@ function dump_audio ($cdemu, $dir_out, $filename) {
 }
 
 // Dump data track to $dir_out
+// TODO: Ensure files don't overlap when full dumping
+// TODO: Ensure all ISO filesystem data gets dumped
 function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $cdda_symlink, $xa_riff, $hash_algos) {
 	$index = array();
 	$iso9660 = new CDEMU\ISO9660;
@@ -330,12 +349,13 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 				$index['LBA'][] = str_pad ($f_info['lba'], strlen ($cdemu->get_length (true)), '0', STR_PAD_LEFT);
 			}
 			if (($r_info = $iso9660->file_read ($f_info, $file_out, $raw, $header, $trim_filename, $hash_algos, 'cli_dump_progress')) === false) {
-				echo ("      Error: Image ended prematurely!\n");
+				echo ("      Error: No file data, image ended!\n");
 				continue;
-			} else if (isset ($r_info['error']) and isset ($r_info['error']['length']))
-				echo ("      Alert: File may be incomplete, image ended prematurely!\n");
+			}
 			if (isset ($r_info['hash']))
 				cli_print_hashes ($r_info['hash']);
+			if (isset ($r_info['error']) and isset ($r_info['error']['length']))
+				echo ("      Alert: File may be corrupted! Reported file length " . $r_info['error']['length'] . "\n");
 		}
 		
 		// Dump any unaccessed sectors within the data track
@@ -408,6 +428,7 @@ function cli_display_help ($argv) {
 	echo ("    -cue \"FILE.CUE\"    Input CUE file\n");
 	echo ("    -iso \"FILE.ISO\"    Input ISO file\n");
 	echo ("    -bin \"FILE.BIN\"    Input BIN file\n");
+	echo ("    -cde \"INDEX.CDEMU\" Input CDEMU index file\n");
 	echo ("    -output \"PATH/\"    Output directory\n");
 	echo ("    -ram               Load all read sectors into ram\n");
 	echo ("    -hash              Hash image and output files using: crc32b, sha256, md5\n\n");
