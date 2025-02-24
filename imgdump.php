@@ -26,7 +26,7 @@ function cli_process_argv ($argv) {
 	$ram = false;
 	for ($i = 1; $i < count ($argv); $i++) {
 		switch ($argv[$i]) {
-			case '-cdemu':
+			case '-cde':
 				if (isset ($cue) or isset ($iso) or isset ($bin) or !isset ($argv[$i + 1]))
 					die ("Error: Invalid arguments\n");
 				$index = $argv[$i + 1];
