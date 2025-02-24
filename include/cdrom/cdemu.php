@@ -341,8 +341,6 @@ class CDEMU {
 			$pos = $this->msf2lba ($pos);
 		if (!is_numeric ($pos) or $pos >= $this->CD['sector_count']) // Make sure we are inside our limits
 			return (false); // EOD
-		if (is_resource ($this->fh)) // If we have a file open, close it so read() can do the file position seek
-			fclose ($this->fh);
 		$this->sector = $pos; // Set current sector
 		$this->track_detect(); // Detect track after seek
 		return (true);
@@ -361,94 +359,45 @@ class CDEMU {
 						break;
 				}
 				$this->track = $t; // Save found/last track
-				if (is_resource ($this->fh) and $this->CD['multifile']) // If track changed while multifile, reload proper image
-					fclose ($this->fh); // Close file
 			}
 		}
 	}
 	
 	// Read currect sector from image, optionally seek and/or limit processing to only return sector data
 	public function &read ($seek = false, $limit_processing = false) {
-		if ($this->CD['track'][$this->track]['file_format'] == CDEMU_FILE_CDEMU)
-			return ($this->cdemu_read ($seek));
 		$fail = false;
 		if ($seek !== false and $seek != $this->sector and !$this->seek ($seek))
 			return ($fail); // Seek failed
-		
-		// Choose sector size based on file format
-		if ($this->CD['track'][$this->track]['file_format'] == CDEMU_FILE_BIN)
-			$sector_size = self::bin_sector_size;
-		else if ($this->CD['track'][$this->track]['file_format'] == CDEMU_FILE_ISO)
-			$sector_size = self::iso_sector_size;
-		
-		if (is_resource ($this->fh) && feof ($this->fh)) // End of file check
-			fclose ($this->fh);
-		if (!is_resource ($this->fh)) { // If no file is open, open file and seek
-			$this->fh = fopen ($this->CD['track'][$this->track]['file'], 'r'); // Open track bin
-			if ($this->buffer_limit)
-				$this->buffer = array(); // Invalidate buffer
-			$pos = $this->sector;
-			if ($this->CD['multifile'])
-				$pos -= $this->CD['track'][$this->track]['lba']; // Start of track minus current sector
-			$pos = fseek ($this->fh, $pos * $sector_size);
-		}
 		if (!isset ($this->buffer[$this->sector])) { // Needed sector not in buffer
 			if ($this->buffer_limit)
 				$this->buffer = array(); // Clear buffer
-			for ($i = $this->sector; $i < ($this->sector + 250) and $i < $this->CD['sector_count']; $i++) { // Load sectors into buffer
-				if (isset ($this->buffer[$i]))
-					continue;
-				$data = fread ($this->fh, $sector_size); // Read sector
-				if (strlen ($data) < $sector_size)
-					break;
-				if ($this->CD['track'][$this->track]['file_format'] == CDEMU_FILE_BIN)
-					$this->buffer[$i] = $limit_processing ? array ('sector' => $data) : $this->read_bin_sector ($data); // Process bin/cue type sector
-				else if ($this->CD['track'][$this->track]['format'] == CDEMU_FILE_ISO)
-					$this->buffer[$i] = $this->gen_sector_mode1 ($data, $i); // Process iso type sector
-				if (feof ($this->fh))
-					break;
-			}
-		}
-		
-		// If we have our sector in buffer, return and increment
-		// Note: If we overflow past EOF we will return false on the next read
-		if (isset ($this->buffer[$this->sector]) and $this->buffer[$this->sector] !== false) {
-			$sector = &$this->buffer[$this->sector]; // Save sector
-			if ($this->sect_list_en)
-				$this->sect_list[$this->sector] = isset ($this->sect_list[$this->sector]) ? $this->sect_list[$this->sector]++ : 1; // Increment access list
-			$this->sector++; // Increment sector	
-			$this->track_detect(); // Detect track after sector change
-			return ($sector); // return sector
-		}
-		return ($fail); // EOF
-	}
-	
-	// Read currect sector from image
-	public function &cdemu_read ($seek = false) {
-		$fail = false;
-		if ($seek !== false and $seek != $this->sector and !$this->seek ($seek))
-			return ($fail); // Seek failed
-		if (!isset ($this->buffer[$this->sector])) {
-			if ($this->buffer_limit)
-				$this->buffer = array();
 			$seq = false;
 			for ($i = $this->sector; $i < ($this->sector + 250) and $i < $this->CD['sector_count']; $i++) { // Load sectors into buffer
 				if (isset ($this->buffer[$i]))
 					continue;
-				if (isset ($this->CD['cdemu']['sector'][$i]['sector'])) {
+				$track = $this->get_track_by_sector ($i);
+				if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_CDEMU and isset ($this->CD['cdemu']['sector'][$i]['sector'])) {
 					$this->buffer[$i] = $this->read_bin_sector ($this->CD['cdemu']['sector'][$i]['sector']);
 					continue;
 				}
-				$sector_size = $this->cdemu_sector_size ($i); // CDEMU variable sector size
-				if (!$this->cdemu_seek ($i, $seq))
+				if (($sector_size = $this->file_seek ($i, $seq)) === false)
 					return ($fail);
 				$seq = true;
 				$data = fread ($this->fh, $sector_size); // Read sector
-				$this->buffer[$i] = $this->cdemu_gen_sector ($data, $i); // Generate CDEMU sector
+				if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_CDEMU) {
+					$this->buffer[$i] = $this->cdemu_gen_sector ($data, $i); // Generate sector from CDEMU data
+					continue;
+				}
+				if (strlen ($data) < $sector_size)
+					break;
+				if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_BIN)
+					$this->buffer[$i] = $limit_processing ? array ('sector' => $data) : $this->read_bin_sector ($data); // Process BIN data into sector
+				else if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_ISO)
+					$this->buffer[$i] = $this->gen_sector_mode1 ($data, $i); // Generate Mode 1 sector from ISO data
+				else
+					break;
 			}
 		}
-		// If we have our sector in buffer, return and increment
-		// Note: If we overflow past EOF we will return false on the next read
 		if (isset ($this->buffer[$this->sector]) and $this->buffer[$this->sector] !== false) {
 			$sector = &$this->buffer[$this->sector]; // Save sector
 			if ($this->sect_list_en)
@@ -460,37 +409,59 @@ class CDEMU {
 		return ($fail); // EOF
 	}
 	
-	private function cdemu_seek ($sector, $seq = false) {
+	// Ensure proper file is open and we are at the correct position
+	// Note: if $seq is set to true and no file change, skip seeking
+	// Note: Returns size to be read from file for $sector, false on error
+	private function file_seek ($sector, $seq = false) {
 		$seek = true;
-		foreach (array_keys ($this->CD['cdemu']['lba']) as $s) {
-			if ($s <= $sector)
-				$lba = $s;
-		}
-		if (!isset ($lba))
+		$track = $this->get_track_by_sector ($sector);
+		if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_BIN or $this->CD['track'][$track]['file_format'] == CDEMU_FILE_ISO) { // BIN / ISO
+			$sector_size = $this->CD['track'][$track]['file_format'] == CDEMU_FILE_BIN ? self::bin_sector_size : self::iso_sector_size;
+			if (is_resource ($this->fh)) {
+				$m_fh = stream_get_meta_data ($this->fh);
+				if ($m_fh['uri'] != $this->CD['track'][$this->track]['file'])
+					fclose ($this->fh);
+				else if ($seq)
+					$seek = false;
+			}
+			if (!is_resource ($this->fh))
+				$this->fh = fopen ($this->CD['track'][$this->track]['file'], 'r');
+			if (!$seek)
+				return ($sector_size);
+			$pos = ($sector - ($this->CD['multifile'] ? $this->CD['track'][$this->track]['lba'] : 0)) * $sector_size;
+			fseek ($this->fh, $pos);
+		} else if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_CDEMU) { // CDEMU full dump
+			foreach (array_keys ($this->CD['cdemu']['lba']) as $s) {
+				if ($s <= $sector)
+					$lba = $s;
+			}
+			if (!isset ($lba))
+				return (false);
+			if (is_resource ($this->fh)) {
+				$m_fh = stream_get_meta_data ($this->fh);
+				if ($m_fh['uri'] != $this->CD['cdemu']['lba'][$lba])
+					fclose ($this->fh);
+				else if ($seq)
+					$seek = false;
+			}
+			if (!is_resource ($this->fh))
+				$this->fh = fopen ($this->CD['cdemu']['lba'][$lba], 'r'); // Open data segment
+			$sector_size = $this->cdemu_sector_size ($sector);
+			if (!$seek)
+				return ($sector_size);
+			$p = 0;
+			if ($lba != $sector) {
+				for ($i = $lba; $i < $sector; $i++)
+					$p += $this->cdemu_sector_size ($i);
+			}
+			if (fseek ($this->fh, $p) != 0) // Seek to proper file location
+				return (false);
+		} else
 			return (false);
-		if (is_resource ($this->fh)) {
-			$m_fh = stream_get_meta_data ($this->fh);
-			if ($m_fh['uri'] != $this->CD['cdemu']['lba'][$lba])
-				fclose ($this->fh);
-			else if ($seq)
-				$seek = false;
-				
-		}
-		if (!is_resource ($this->fh))
-			$this->fh = fopen ($this->CD['cdemu']['lba'][$lba], 'r'); // Open data segment
-		if (!$seek)
-			return (true);
-		$p = 0;
-		if ($lba != $sector) {
-			for ($i = $lba; $i < $sector; $i++)
-				$p += $this->cdemu_sector_size ($i);
-		}
-		//echo ("cdemu_seek($p): " . $this->CD['cdemu']['lba'][$lba] . "\n");
-		if (fseek ($this->fh, $p) != 0) // Seek to proper file location
-			return (false);
-		return (true);
+		return ($sector_size);
 	}
 	
+	// Find stored sector size from CDEMU full dump data
 	private function cdemu_sector_size ($sector) {
 		if (!isset ($this->CD['cdemu']['sector'][$sector]))
 			return (2352); // Audio
@@ -506,7 +477,8 @@ class CDEMU {
 		} else
 			return (2336); // Mode 2 (Formless)
 	}
-	
+	 
+	// Generate sectors from CDEMU full dump data
 	private function &cdemu_gen_sector (&$data, $lba) {
 		if (!isset ($this->CD['cdemu']['sector'][$lba])) {
 			$data = $this->gen_sector_audio ($data); // Audio
@@ -597,6 +569,8 @@ class CDEMU {
 	
 	// Generate Mode 2 sector
 	private function &gen_sector_mode2 (&$data, $lba, $mode = false) {
+		if (strlen ($data) > 2336)
+			$data = substr ($data, 0, 2336); // Clip
 		$s = array();
 		$s['sync'] = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
 		$s['address'] = $this->lba2header ($lba);

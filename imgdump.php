@@ -35,7 +35,7 @@ function cli_process_argv ($argv) {
 				$i++;
 				break;
 			case '-cue':
-				if (isset ($iso) or isset ($bin) or !isset ($argv[$i + 1]))
+				if (isset ($index) or isset ($iso) or isset ($bin) or !isset ($argv[$i + 1]))
 					die ("Error: Invalid arguments\n");
 				$cue = $argv[$i + 1];
 				if (!is_file ($cue))
@@ -43,7 +43,7 @@ function cli_process_argv ($argv) {
 				$i++;
 				break;
 			case '-iso':
-				if (isset ($cue) or isset ($bin) or !isset ($argv[$i + 1]))
+				if (isset ($index) or isset ($cue) or isset ($bin) or !isset ($argv[$i + 1]))
 					die ("Error: Invalid arguments\n");
 				$iso = $argv[$i + 1];
 				if (!is_file ($iso))
@@ -51,7 +51,7 @@ function cli_process_argv ($argv) {
 				$i++;
 				break;
 			case '-bin':
-				if (!isset ($argv[$i + 1]))
+				if (isset ($index) or !isset ($argv[$i + 1]))
 					die ("Error: Invalid arguments\n");
 				if (isset ($bin))
 					$bin[] = $argv[$i + 1];
