@@ -117,6 +117,7 @@ function cli_process_argv ($argv) {
 				die ("Error: Failed to load bin file '$b'\n");
 		}
 	}
+	
 	dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos);
 	$cdemu->eject(); // Eject Disk
 }
@@ -127,7 +128,7 @@ function dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink
 	$r_info = $cdemu->analyze_image ($full_dump, $hash_algos, 'cli_dump_progress'); // Analyze entire image
 	$cdemu->enable_sector_access_list();
 	if (is_array ($r_info) and isset ($r_info['hash']) and isset ($r_info['hash']['full']))
-		cli_print_hashes ($r_info['hash']['full'], $pre = '  ');
+		cli_print_hashes ($r_info['hash']['full'], '  ');
 	if ($full_dump) {
 		$index['LENGTH'] = $cdemu->get_length (true); // Image length in sectors
 		$CD = $cdemu->get_layout();
@@ -146,7 +147,7 @@ function dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
 		echo ("  Track $t\n");
 		if (isset ($r_info['hash']['track'][$track]))
-			cli_print_hashes ($r_info['hash']['track'][$track], $pre = '    ');
+			cli_print_hashes ($r_info['hash']['track'][$track], '    ');
 		if (!$cdemu->set_track ($track))
 			die ("Error: Unexpected end of image!\n");
 		if ($cdemu->get_track_type() == CDEMU_TRACK_AUDIO) {
@@ -190,8 +191,12 @@ function &dump_verify ($cdemu, $dir_out) {
 		$d1 = $cdemu->read();
 		$d2 = $cdemu2->read();
 		cli_dump_progress ($cdemu->get_length (true), $i + 1);
-		if ($d1['sector'] != $d2['sector'])
+		if ($d1['sector'] != $d2['sector']) {
+			//echo (bin2hex ($d1['sector']) . "\n\n");
+			//echo (bin2hex ($d2['sector']) . "\n");
+			//die();
 			$c_sect[$i] = $d1['sector'];
+		}
 	}
 	return ($c_sect);
 }
@@ -246,7 +251,7 @@ function &dump_analytics_condensed ($cdemu, &$a, $file_prefix, $file_postfix, $d
 				if (($hash = hash_write_file ($dir_out . $file_out, $out, $hash_algos)) === false)
 					die ("Error: Could not write file '" . $dir_out . $file_out . "'\n");
 				if (is_array ($hash) and isset ($hash['hash']))
-					cli_print_hashes ($hash['hash'], $pre = '    ');
+					cli_print_hashes ($hash['hash'], '    ');
 				$out = '';
 			}
 			if (isset ($p_out))
@@ -283,20 +288,47 @@ function dump_audio ($cdemu, $dir_out, $filename) {
 	return (true);
 }
 
+function dump_filesystem ($cdemu, $iso9660, $dir_out, $file_prefix, $file_postfix, $hash_algos) {
+	$map = $iso9660->get_filesystem_map();
+	$index = array();
+	$out = '';
+	$k_last = array_key_last ($map) + 1;
+	for ($i = array_key_first ($map); $i <= $k_last; $i++) {
+		if (!isset ($map[$i])) {
+			if (strlen ($out) > 0) {
+				$index[] = str_pad ($p_out, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT);
+				$file_out = $file_prefix . str_pad ($p_out, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . $file_postfix;
+				echo ("    $file_out\n");
+				if (($hash = hash_write_file ($dir_out . $file_out, $out, $hash_algos)) === false)
+					die ("Error: Could not write file '" . $dir_out . $file_out . "'\n");
+				if (is_array ($hash) and isset ($hash['hash']))
+					cli_print_hashes ($hash['hash'], '    ');
+				$out = '';
+			}
+			if (isset ($p_out))
+				unset ($p_out);
+			continue;
+		}
+		if (!isset ($p_out))
+			$p_out = $i;
+		$data = $cdemu->read ($i);
+		$out .= $data['data'];
+	}
+	return ($index);
+}
+
 // Dump data track to $dir_out
-// TODO: Ensure files don't overlap when full dumping
-// TODO: Ensure all ISO filesystem data gets dumped
 function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $cdda_symlink, $xa_riff, $hash_algos) {
 	$index = array();
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
-	$cdemu->disable_sector_access_list();
 	if (!$full_dump and !is_dir ($dir_out . $track_dir))
 		mkdir ($dir_out . $track_dir, 0777, true);
 	if ($iso9660->init ($cdemu->get_track_start (true))) { // Process ISO9660 filesystem
-		$cdemu->enable_sector_access_list();
 		if (!$full_dump and !is_dir ($dir_out . $track_dir . "contents"))
 			mkdir ($dir_out . $track_dir . "contents", 0777, true);
+		
+		// System Area
 		if ($full_dump) {
 			$index['LBA'][] = str_pad ($cdemu->get_track_start (true), strlen ($cdemu->get_length (true)), '0', STR_PAD_LEFT);
 			$file_out = "LBA" . str_pad ($cdemu->get_track_start (true), strlen ($cdemu->get_length (true)), '0', STR_PAD_LEFT) . ".bin";
@@ -307,6 +339,14 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 		if (isset ($r_info['hash']))
 			cli_print_hashes ($r_info['hash']);
 		
+		// File System
+		if ($full_dump) {
+			$i = dump_filesystem ($cdemu, $iso9660, $dir_out, "LBA", ".bin", $hash_algos);
+			foreach ($i as $in)
+				$index['LBA'][] = $in;
+		}
+		
+		// Files
 		$contents = $iso9660->get_content ('/', true, true); // List root recursively
 		foreach ($contents as $c => $meta) { // Save contents to disk
 			if (!$full_dump)
@@ -316,8 +356,8 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 					mkdir ($dir_out . $track_dir . "contents" . $c, 0777, true);
 				continue;
 			}
-			if (($f_info = $iso9660->find_file ($c)) === false) {
-				echo ("    Error: File not found!\n");
+			if (($f_info = $iso9660->find_file ($c, $full_dump)) === false) {
+				echo ("    Error: File not found\n");
 				continue;
 			}
 			$raw = false;
@@ -337,8 +377,9 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 				symlink ($target, $l_path . $l_name); // Create symlink to CDDA track
 				continue;
 			} else if ($f_info['type'] == ISO9660_FILE_XA) { // XA
-				if ($xa_riff) {
+				if (!$full_dump)
 					$raw = true;
+				if ($xa_riff) {
 					$h_riff_fmt_id = "CDXA";
 					$h_riff_fmt = $f_info['record']['extension']['xa']['data'] . "\x00\x00";
 					$header = "RIFF" . pack ('V', $f_info['length'] + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $f_info['length']);
@@ -348,14 +389,18 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 				echo ("    " . "LBA" . str_pad ($f_info['lba'], strlen ($cdemu->get_length (true)), '0', STR_PAD_LEFT) . ".bin\n");
 				$index['LBA'][] = str_pad ($f_info['lba'], strlen ($cdemu->get_length (true)), '0', STR_PAD_LEFT);
 			}
-			if (($r_info = $iso9660->file_read ($f_info, $file_out, $raw, $header, $trim_filename, $hash_algos, 'cli_dump_progress')) === false) {
-				echo ("      Error: No file data, image ended!\n");
+			if (($r_info = $iso9660->file_read ($f_info, $file_out, $full_dump, $raw, $header, $trim_filename, $hash_algos, 'cli_dump_progress')) === false) {
+				echo ("      Error: No file data, image ended\n");
 				continue;
 			}
 			if (isset ($r_info['hash']))
 				cli_print_hashes ($r_info['hash']);
-			if (isset ($r_info['error']) and isset ($r_info['error']['length']))
-				echo ("      Alert: File may be corrupted! Reported file length " . $r_info['error']['length'] . "\n");
+			if (isset ($r_info['error']) and isset ($r_info['error']['length'])) {
+				if ($r_info['length'] < $r_info['error']['length'])
+					echo ("      Alert: File may be corrupted, reported file length " . $r_info['error']['length'] . "\n");
+				else
+					echo ("      Alert: File had trailing data, reported file length " . $r_info['error']['length'] . "\n");
+			}
 		}
 		
 		// Dump any unaccessed sectors within the data track
@@ -370,7 +415,6 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 			cli_print_hashes ($hash);
 		}
 	} else { // Dump unrecognized data track
-		$cdemu->enable_sector_access_list();
 		$sector = $cdemu->get_track_start (true);
 		$length = $cdemu->get_track_length (true);
 		if ($full_dump)

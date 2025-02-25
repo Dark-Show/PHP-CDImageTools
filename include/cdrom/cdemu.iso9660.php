@@ -24,6 +24,7 @@ class ISO9660 {
 	private $iso_pt = false; // Path Table
 	private $iso_dr = false; // Directory Records
 	private $iso_ext = false; // Extension
+	private $iso_map = false; // Filesystem LBA Map
 	
 	// Sets CDEMU object
 	public function set_cdemu ($cdemu) {
@@ -37,16 +38,12 @@ class ISO9660 {
 	public function init ($lba = false) {
 		if ($this->o_cdemu === false) // CDEMU check
 			return (false);
-		if ($lba === false) {
-			$this->iso_lba = 0;
-			$this->iso_vd = array();
-			$this->iso_pt = array();
-			$this->iso_dr = array();
-			$this->iso_ext = array();
-		} else if (is_numeric ($lba))
-			$this->iso_lba = $lba;
-		else
-			return (false);
+		$this->iso_lba = $lba === false ? 0 : $lba;
+		$this->iso_vd = array();
+		$this->iso_pt = array();
+		$this->iso_dr = array();
+		$this->iso_ext = array();
+		$this->iso_map = array();
 		if ($this->process_volume_descriptor() === false)
 			return (false);
 		$this->process_path_table();
@@ -72,6 +69,12 @@ class ISO9660 {
 	// Returns iso9660 extension array
 	public function get_extension() {
 		return ($this->iso_ext);
+	}
+	
+	// Returns iso9660 filesystem lba map array
+	public function get_filesystem_map() {
+		ksort ($this->iso_map, SORT_NUMERIC);
+		return ($this->iso_map);
 	}
 	
 	// Check if string consists of only ASCII a characters
@@ -128,7 +131,7 @@ class ISO9660 {
 	}
 	
 	// Read System Area from first 16 sectors of filesystem
-	//   $file_out: If set, data is saved and infomation returned, if not set the data is returned inside information array
+	//   $file_out: If set, data is saved and information returned, if not set the data is returned inside information array
 	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b')
 	public function &read_system_area ($file_out = false, $hash_algos = false) {
 		$fail = false;
@@ -205,7 +208,7 @@ class ISO9660 {
 	}
 	
 	// Returns directory record and parsed file information for file located at $path
-	public function &find_file ($path) {
+	public function &find_file ($path, $full_dump = false) {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);
 		$fail = false;
@@ -237,11 +240,18 @@ class ISO9660 {
 				$f_info['lba'] -= 150; // Adjust address backwards 2 seconds
 				$f_info['track'] = $this->o_cdemu->get_track_by_sector ($f_info['lba']); // Track
 				$f_info['length'] = ($f_info['length'] / 2048 + 150) * 2352; // Calculate length for 2352 byte sectors, add 150 sectors
-			} else if ($file['extension']['xa']['attributes']['form2'] or $file['extension']['xa']['attributes']['interleaved']) {
-				$f_info['type'] = ISO9660_FILE_XA; // Contains Mode2-XA sectors
-				$sectors = $f_info['length'] / 2048; // Calculate 2048 byte sectors
-				//$f_info['length'] = $f_info['length'] / 2048 * 2352;
-				$f_info['length'] = (int)$sectors * 2352 + 2048 * ($sectors - (int)$sectors); // Calculate length for 2352 byte sectors
+			} else if ($file['extension']['xa']['attributes']['form2']) {
+				$f_info['type'] = ISO9660_FILE_XA; // Contains Mode2 XA Form2 sectors
+				if ($full_dump)
+					$f_info['length'] = $f_info['length'] / 2048 * 2324; // Calculate length for 2352 byte sectors
+				else
+					$f_info['length'] = $f_info['length'] / 2048 * 2352; // Calculate length for 2352 byte sectors
+			} else if ($file['extension']['xa']['attributes']['interleaved']) {
+				$f_info['type'] = ISO9660_FILE_XA; // Contains interleaved sectors
+				if ($full_dump)
+					$f_info['length'] = $f_info['length'] / 2048 * 2324; // Calculate length for 2352 byte sectors
+				else
+					$f_info['length'] = $f_info['length'] / 2048 * 2352; // Calculate length for 2352 byte sectors
 			}
 		}
 		return ($f_info);
@@ -254,7 +264,8 @@ class ISO9660 {
 	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b')
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
 	// Note: If ISO9660 file version > 1 $file_out is opened with 'a'
-	public function &file_read ($f_info, $file_out = false, $raw = false, $header = false, $ver_merge = false, $hash_algos = false, $cb_progress = false) {
+	// TODO: Ensure files don't overlap filesystem sectors and/or other files when $full_dump
+	public function &file_read ($f_info, $file_out = false, $full_dump = false, $raw = false, $header = false, $ver_merge = false, $hash_algos = false, $cb_progress = false) {
 		$fail = false;
 		$length = 0;
 		$r_info = array();
@@ -290,7 +301,21 @@ class ISO9660 {
 				$length += strlen ($data['sector']);
 				$r_info['data'] .= $data['sector'];
 			} else if ($f_info['length'] - $length < strlen ($data['data'])) {
-				$data['data'] = substr ($data['data'], 0, $f_info['length'] - $length);
+				// IDEA: Check interleaved flag for hints on mixed sector files
+				if ($f_info['type'] == ISO9660_FILE_XA) { // XA File (?)
+					$t_null = true;
+					for ($i = $f_info['length'] - $length; $i <= strlen ($data['data']); $i++) {
+						if ($data['data'][$i - 1] != "\x00") {
+							$t_null = false;
+							break;
+						}
+					}
+					if ($t_null)
+						$data['data'] = substr ($data['data'], 0, $f_info['length'] - $length);
+					else
+						$data['data'] = $data['data'];
+				} else
+					$data['data'] = substr ($data['data'], 0, $f_info['length'] - $length);
 				$length += strlen ($data['data']);
 				$r_info['data'] .= $data['data'];
 			} else {
@@ -299,6 +324,7 @@ class ISO9660 {
 			}
 			if ($file_out !== false) {
 				fwrite ($fh, $r_info['data']);
+				fflush ($fh);
 				$r_info['data'] = '';
 			}
 			if ($hash_algos !== false) {
@@ -315,7 +341,6 @@ class ISO9660 {
 				call_user_func ($cb_progress, $length, $length); // Clear
 		}
 		if ($file_out !== false) {
-			fflush ($fh);
 			fclose ($fh);
 			unset ($r_info['data']);
 		}
@@ -329,10 +354,11 @@ class ISO9660 {
 	private function process_volume_descriptor() {
 		$loc = $this->iso_lba + 16;
 		do {
-			if (($data = $this->o_cdemu->read ($loc++)) === false)
+			if (($data = $this->o_cdemu->read ($loc)) === false)
 				return (false);
 			if (($vd = $this->volume_descriptor ($data['data'])) === false)
 				break; // Missing Volume Descriptor Set Terminator
+			$this->iso_map[$loc++] = ISO9660_MAP_VOLUME_DESCRIPTOR;
 			if ($vd['type'] == 255)
 				$loc = false;
 			$this->iso_vd[$vd['type']] = $vd;
@@ -465,6 +491,7 @@ class ISO9660 {
 		do {
 			if (($data = $this->o_cdemu->read ($loc)) === false)
 				return (false);
+			$this->iso_map[$loc] = ISO9660_MAP_PATH_TABLE;
 			$raw .= $data['data'];
 			$loc++;
 		} while (--$sec > 0);
@@ -507,6 +534,7 @@ class ISO9660 {
 				$data['data'] = substr ($data['data'], $dr['dr_len']);
 				$dr = $this->directory_record ($data['data']);
 			}
+			$this->iso_map[$loc] = ISO9660_MAP_DIRECTORY_RECORD;
 			$loc++;
 		} while (--$sec > 0);
 		return ($dir);

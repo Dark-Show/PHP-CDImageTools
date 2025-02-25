@@ -4,19 +4,19 @@
 // Title: CDEmu
 // Description: CD Image Decoder
 //////////////////////////////////////
-// Supported Functionality
-//   + CUE/BIN format
+// Supported Image Formats
+//   + CUE/BIN
 //     + Multifile support
-//   + ISO format
-//     + Regenerate Mode 1 sector
-//   + EDC/ECC generation
-//   + LBA/ATIME/TRACK seeking
-//   + Sector types:
-//     + Mode 0 (2336b: Zeros)
-//     + Mode 1 (2048b)
-//     + Mode 2 (2336b: Formless)
-//     + Mode 2 XA Form 1 (2048b)
-//     + Mode 2 XA Form 2 (2324b)
+//   + ISO
+//   + CDEMU Full Dump Index
+//
+// Supported Sector Types
+//   + Audio
+//   + Mode 0
+//   + Mode 1
+//   + Mode 2 (Formless)
+//   + Mode 2 XA Form 1
+//   + Mode 2 XA Form 2
 //////////////////////////////////////
 
 class CDEMU {
@@ -317,7 +317,9 @@ class CDEMU {
 						$track = $this->get_track_by_sector ((int)trim ($i[1]));
 						if (($format = strtolower (trim ($i[2]))) != "cdda") // CDDA check
 							return (false);
-						$this->CD['cdemu']['lba'][(int)trim ($i[1])] = $path . "LBA" . trim ($i[1]) . ".cdda";
+						//$this->CD['cdemu']['lba'][(int)trim ($i[1])] = $path . "LBA" . trim ($i[1]) . ".cdda";
+						$this->CD['track'][$track]['file_format'] = CDEMU_FILE_BIN;
+						$this->CD['track'][$track]['file'] = $path . "LBA" . trim ($i[1]) . ".cdda";
 					}
 					break;
 				default:
@@ -401,7 +403,7 @@ class CDEMU {
 		if (isset ($this->buffer[$this->sector]) and $this->buffer[$this->sector] !== false) {
 			$sector = &$this->buffer[$this->sector]; // Save sector
 			if ($this->sect_list_en)
-				$this->sect_list[$this->sector] = isset ($this->sect_list[$this->sector]) ? $this->sect_list[$this->sector]++ : 1; // Increment access list
+				$this->sect_list[$this->sector] = isset ($this->sect_list[$this->sector]) ? $this->sect_list[$this->sector] + 1 : 1; // Increment access list
 			$this->sector++; // Increment sector	
 			$this->track_detect(); // Detect track after sector change
 			return ($sector); // return sector
@@ -419,16 +421,16 @@ class CDEMU {
 			$sector_size = $this->CD['track'][$track]['file_format'] == CDEMU_FILE_BIN ? self::bin_sector_size : self::iso_sector_size;
 			if (is_resource ($this->fh)) {
 				$m_fh = stream_get_meta_data ($this->fh);
-				if ($m_fh['uri'] != $this->CD['track'][$this->track]['file'])
+				if ($m_fh['uri'] != $this->CD['track'][$track]['file'])
 					fclose ($this->fh);
 				else if ($seq)
 					$seek = false;
 			}
 			if (!is_resource ($this->fh))
-				$this->fh = fopen ($this->CD['track'][$this->track]['file'], 'r');
+				$this->fh = fopen ($this->CD['track'][$track]['file'], 'r');
 			if (!$seek)
 				return ($sector_size);
-			$pos = ($sector - ($this->CD['multifile'] ? $this->CD['track'][$this->track]['lba'] : 0)) * $sector_size;
+			$pos = ($sector - ($this->CD['multifile'] ? $this->CD['track'][$track]['lba'] : 0)) * $sector_size;
 			fseek ($this->fh, $pos);
 		} else if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_CDEMU) { // CDEMU full dump
 			foreach (array_keys ($this->CD['cdemu']['lba']) as $s) {
@@ -764,6 +766,129 @@ class CDEMU {
 		return ($xa);
 	}
 	
+	// Optionally analyzes image for reconstruction data, and optionally hashes image and tracks 
+	public function analyze_image ($analyze, $hash_algos, $cb_progress) {
+		$hash_algos = cdemu_hash_validate ($hash_algos);
+		if ($hash_algos === false and !$analyze)
+			return (false);
+		if (!is_callable ($cb_progress))
+			$cb_progress = false;
+		$r_info = array();
+		if ($hash_algos !== false) {
+			foreach ($hash_algos as $algo)
+				$r_info['hash']['full'][$algo] = hash_init ($algo); // Init full hash
+		}
+		if (!$this->set_track (1))
+			return (false); // Track change error (Image ended)
+		$s_len = $this->get_length (true);
+		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
+			$t_cur = $this->get_track(); // Get current track
+			if ($hash_algos !== false and !isset ($r_info['hash']['track'][$t_cur])) {
+				foreach ($hash_algos as $algo)
+					$r_info['hash']['track'][$t_cur][$algo] = hash_init ($algo); // Init track hash
+			}
+			$sector = $this->read (false, $analyze ? false : true);
+			if ($analyze) {
+				if (isset ($sector['mode']))
+					$r_info['analytics']['mode'][$s_cur] = $sector['mode']; // Mode
+				if (isset ($sector['address']) and $this->lba2header ($s_cur) != $sector['address'])
+					$r_info['analytics']['address'][$s_cur] = $sector['address']; // Address
+				if (isset ($sector['xa']))
+					$r_info['analytics']['xa'][$s_cur] = $sector['xa']['raw']; // XA
+				if (isset ($sector['error']) and (isset ($sector['edc']) or isset ($sector['ecc']))) {
+					if (isset ($sector['error']['edc']))
+						$r_info['analytics']['edc'][$s_cur] = $sector['edc']; // EDC
+					if (isset ($sector['xa']) and $sector['xa']['submode']['form'] == 2) {
+						$r_info['analytics']['form2_edc_log'][] = $s_cur; // Track sectors for optional error removal
+						if ($sector['edc'] != "\x00\x00\x00\x00") // Detect optional XA Form 2 EDC
+							$r_info['analytics']['form2edc'] = true;
+						else if (!isset ($r_info['analytics']['form2edc']))
+							$r_info['analytics']['form2edc'] = false;
+					}
+					if (isset ($sector['error']['ecc']))
+						$r_info['analytics']['ecc'][$s_cur] = $sector['ecc']; // ECC
+				}
+			}
+			if ($hash_algos !== false) {
+				foreach ($r_info['hash']['full'] as $hash)
+					hash_update ($hash, $sector['sector']);
+				foreach ($r_info['hash']['track'][$t_cur] as $hash)
+					hash_update ($hash, $sector['sector']);
+			}
+			if ($cb_progress !== false)
+				call_user_func ($cb_progress, $s_len, $s_cur + 1);
+		}
+		if (isset ($r_info['analytics']['form2edc']) and !$r_info['analytics']['form2edc']) { // Remove all optional EDC values
+			foreach ($r_info['analytics']['form2_edc_log'] as $lba) {
+				if ($r_info['analytics']['edc'][$lba] == "\x00\x00\x00\x00")
+					unset ($r_info['analytics']['edc'][$lba]);
+			}
+			unset ($r_info['analytics']['form2_edc_log']);
+		}
+		if ($hash_algos !== false) {
+			foreach ($r_info['hash']['full'] as $algo => $hash)
+				$r_info['hash']['full'][$algo] = hash_final ($hash, false);
+			foreach ($r_info['hash']['track'] as $t_cur => $h) {
+				foreach ($h as $algo => $hash)
+					$r_info['hash']['track'][$t_cur][$algo] = hash_final ($hash, false);
+			}
+		}
+		return ($r_info);
+	}
+	
+	// Save sectors to $file
+	// Note: $length is in sectors, not filesize
+	// Note: If $file is false only hash will be computed
+	public function save_sector ($file, $sector, $length = 1, $raw = true, $hash_algos = false, $cb_progress = false) {
+		$hash_algos = cdemu_hash_validate ($hash_algos);
+		if ($file === false and $hash_algos === false) // Nothing to do
+			return (false);
+		if (!is_callable ($cb_progress))
+			$cb_progress = false;
+		if ($hash_algos !== false) {
+			$hashes = array();
+			foreach ($hash_algos as $algo)
+				$hashes[$algo] = hash_init ($algo); // Init hash
+		}
+		if ($sector >= $this->CD['sector_count'])
+			return (false);
+		if ($file !== false and ($fh = fopen ($file, 'w')) === false)
+			return (false); // File error: could not open file for writing
+		for ($pos = 0; $pos < $length; $pos++) {
+			if ($sector + $pos >= $this->CD['sector_count'] or ($data = $this->read ($sector + $pos, $raw)) === false)
+				continue; // Sector read error
+			$data = $raw ? $data['sector'] : $data['data'];
+			if ($file !== false and fwrite ($fh, $data) === false)
+				return (false); // File error: out of space
+			if ($hash_algos !== false) {
+				foreach ($hashes as $hash)
+					hash_update ($hash, $data);
+			}
+			if ($cb_progress !== false)
+				call_user_func ($cb_progress, $length, $pos + 1);
+		}
+		if ($file !== false) {
+			fflush ($fh);
+			fclose ($fh);
+		}
+		if ($hash_algos !== false) {
+			foreach ($hashes as $algo => $hash)
+				$hashes[$algo] = hash_final ($hash, false);
+			return ($hashes);
+		}
+		return (true);	
+	}
+	
+	// Save track to file, with optional hashing support
+	// Note: If $file is false only hash will be computed
+	public function save_track ($file, $track = false, $hash_algos = false, $cb_progress = false) {
+		if ($track !== false and !$this->set_track ($track))
+			return (false); // Track change error (Image ended)
+		$s_start = $this->get_track_start (true);
+		$s_len = $this->get_track_length (true);
+		return ($this->save_sector ($file, $s_start, $s_len, true, $hash_algos, $cb_progress));
+	}
+	
 	// Populate LUTs for EDC and ECC
 	// Ported From: ECM Tools (Neill Corlett)
 	private function lut_init () {
@@ -915,129 +1040,6 @@ class CDEMU {
 				return ($t);
 		}
 		return (false);
-	}
-	
-	// Optionally analyzes image for reconstruction data, and optionally hashes image and tracks 
-	public function analyze_image ($analyze, $hash_algos, $cb_progress) {
-		$hash_algos = cdemu_hash_validate ($hash_algos);
-		if ($hash_algos === false and !$analyze)
-			return (false);
-		if (!is_callable ($cb_progress))
-			$cb_progress = false;
-		$r_info = array();
-		if ($hash_algos !== false) {
-			foreach ($hash_algos as $algo)
-				$r_info['hash']['full'][$algo] = hash_init ($algo); // Init full hash
-		}
-		if (!$this->set_track (1))
-			return (false); // Track change error (Image ended)
-		$s_len = $this->get_length (true);
-		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
-			$t_cur = $this->get_track(); // Get current track
-			if ($hash_algos !== false and !isset ($r_info['hash']['track'][$t_cur])) {
-				foreach ($hash_algos as $algo)
-					$r_info['hash']['track'][$t_cur][$algo] = hash_init ($algo); // Init track hash
-			}
-			$sector = $this->read (false, $analyze ? false : true);
-			if ($analyze) {
-				if (isset ($sector['mode']))
-					$r_info['analytics']['mode'][$s_cur] = $sector['mode']; // Mode
-				if (isset ($sector['address']) and $this->lba2header ($s_cur) != $sector['address'])
-					$r_info['analytics']['address'][$s_cur] = $sector['address']; // Address
-				if (isset ($sector['xa']))
-					$r_info['analytics']['xa'][$s_cur] = $sector['xa']['raw']; // XA
-				if (isset ($sector['error']) and (isset ($sector['edc']) or isset ($sector['ecc']))) {
-					if (isset ($sector['error']['edc']))
-						$r_info['analytics']['edc'][$s_cur] = $sector['edc']; // EDC
-					if (isset ($sector['xa']) and $sector['xa']['submode']['form'] == 2) {
-						$r_info['analytics']['form2_edc_log'][] = $s_cur; // Track sectors for optional error removal
-						if ($sector['edc'] != "\x00\x00\x00\x00") // Detect optional XA Form 2 EDC
-							$r_info['analytics']['form2edc'] = true;
-						else if (!isset ($r_info['analytics']['form2edc']))
-							$r_info['analytics']['form2edc'] = false;
-					}
-					if (isset ($sector['error']['ecc']))
-						$r_info['analytics']['ecc'][$s_cur] = $sector['ecc']; // ECC
-				}
-			}
-			if ($hash_algos !== false) {
-				foreach ($r_info['hash']['full'] as $hash)
-					hash_update ($hash, $sector['sector']);
-				foreach ($r_info['hash']['track'][$t_cur] as $hash)
-					hash_update ($hash, $sector['sector']);
-			}
-			if ($cb_progress !== false)
-				call_user_func ($cb_progress, $s_len, $s_cur + 1);
-		}
-		if (isset ($r_info['analytics']['form2edc']) and !$r_info['analytics']['form2edc']) { // Remove all optional EDC values
-			foreach ($r_info['analytics']['form2_edc_log'] as $lba) {
-				if ($r_info['analytics']['edc'][$lba] == "\x00\x00\x00\x00")
-					unset ($r_info['analytics']['edc'][$lba]);
-			}
-			unset ($r_info['analytics']['form2_edc_log']);
-		}
-		if ($hash_algos !== false) {
-			foreach ($r_info['hash']['full'] as $algo => $hash)
-				$r_info['hash']['full'][$algo] = hash_final ($hash, false);
-			foreach ($r_info['hash']['track'] as $t_cur => $h) {
-				foreach ($h as $algo => $hash)
-					$r_info['hash']['track'][$t_cur][$algo] = hash_final ($hash, false);
-			}
-		}
-		return ($r_info);
-	}
-	
-	// Save sectors to $file
-	// Note: $length is in sectors, not filesize
-	// Note: If $file is false only hash will be computed
-	public function save_sector ($file, $sector, $length = 1, $raw = true, $hash_algos = false, $cb_progress = false) {
-		$hash_algos = cdemu_hash_validate ($hash_algos);
-		if ($file === false and $hash_algos === false) // Nothing to do
-			return (false);
-		if (!is_callable ($cb_progress))
-			$cb_progress = false;
-		if ($hash_algos !== false) {
-			$hashes = array();
-			foreach ($hash_algos as $algo)
-				$hashes[$algo] = hash_init ($algo); // Init hash
-		}
-		if ($sector >= $this->CD['sector_count'])
-			return (false);
-		if ($file !== false and ($fh = fopen ($file, 'w')) === false)
-			return (false); // File error: could not open file for writing
-		for ($pos = 0; $pos < $length; $pos++) {
-			if ($sector + $pos >= $this->CD['sector_count'] or ($data = $this->read ($sector + $pos, $raw)) === false)
-				continue; // Sector read error
-			$data = $raw ? $data['sector'] : $data['data'];
-			if ($file !== false and fwrite ($fh, $data) === false)
-				return (false); // File error: out of space
-			if ($hash_algos !== false) {
-				foreach ($hashes as $hash)
-					hash_update ($hash, $data);
-			}
-			if ($cb_progress !== false)
-				call_user_func ($cb_progress, $length, $pos + 1);
-		}
-		if ($file !== false) {
-			fflush ($fh);
-			fclose ($fh);
-		}
-		if ($hash_algos !== false) {
-			foreach ($hashes as $algo => $hash)
-				$hashes[$algo] = hash_final ($hash, false);
-			return ($hashes);
-		}
-		return (true);	
-	}
-	
-	// Save track to file, with optional hashing support
-	// Note: If $file is false only hash will be computed
-	public function save_track ($file, $track = false, $hash_algos = false, $cb_progress = false) {
-		if ($track !== false and !$this->set_track ($track))
-			return (false); // Track change error (Image ended)
-		$s_start = $this->get_track_start (true);
-		$s_len = $this->get_track_length (true);
-		return ($this->save_sector ($file, $s_start, $s_len, true, $hash_algos, $cb_progress));
 	}
 	
 	// Current track
