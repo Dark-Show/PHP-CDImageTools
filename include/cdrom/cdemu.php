@@ -430,8 +430,7 @@ class CDEMU {
 				$this->fh = fopen ($this->CD['track'][$track]['file'], 'r');
 			if (!$seek)
 				return ($sector_size);
-			$pos = ($sector - ($this->CD['multifile'] ? $this->CD['track'][$track]['lba'] : 0)) * $sector_size;
-			fseek ($this->fh, $pos);
+			$pos = ($sector - $this->CD['track'][$track]['lba']) * $sector_size;
 		} else if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_CDEMU) { // CDEMU full dump
 			foreach (array_keys ($this->CD['cdemu']['lba']) as $s) {
 				if ($s <= $sector)
@@ -447,18 +446,18 @@ class CDEMU {
 					$seek = false;
 			}
 			if (!is_resource ($this->fh))
-				$this->fh = fopen ($this->CD['cdemu']['lba'][$lba], 'r'); // Open data segment
+				$this->fh = fopen ($this->CD['cdemu']['lba'][$lba], 'r');
 			$sector_size = $this->cdemu_sector_size ($sector);
 			if (!$seek)
 				return ($sector_size);
-			$p = 0;
+			$pos = 0;
 			if ($lba != $sector) {
 				for ($i = $lba; $i < $sector; $i++)
-					$p += $this->cdemu_sector_size ($i);
+					$pos += $this->cdemu_sector_size ($i);
 			}
-			if (fseek ($this->fh, $p) != 0) // Seek to proper file location
-				return (false);
 		} else
+			return (false);
+		if (fseek ($this->fh, $pos) != 0) // Seek to proper file location
 			return (false);
 		return ($sector_size);
 	}
@@ -1018,9 +1017,13 @@ class CDEMU {
 			$seconds -= 60;
 			$minutes++;
 		}
+		while ($minutes > 99)
+			$minutes -= 99;
+		
 		$minutes = str_pad ($minutes, 2, "0", STR_PAD_LEFT);
 		$seconds = str_pad ($seconds, 2, "0", STR_PAD_LEFT);
 		$frames = str_pad ($frames, 2, "0", STR_PAD_LEFT);
+		
 		return (hex2bin ($minutes) . hex2bin ($seconds) . hex2bin ($frames));
 	}
 
@@ -1110,7 +1113,7 @@ class CDEMU {
 		if ($sector_end === false)
 			$sector_end = $this->get_length (true);
 		$gap = false;
-		for ($i = $sector_start; $i < $sector_end; $i++) {
+		for ($i = $sector_start; $i <= $sector_end; $i++) {
 			if ($gap === false and !isset ($access[$i]))
 				$sectors[($gap = $i)] = 1;
 			else if ($gap !== false and !isset ($access[$i]))
