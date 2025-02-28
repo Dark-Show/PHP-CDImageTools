@@ -269,11 +269,22 @@ class CDEMU {
 						unset ($this->CD['track'][$track]['index'][0]);
 					}
 					break;
+				case 'f2edc':
+					$this->CD['cdemu']['form2edc'] = (bool)trim ($i[1]);
+					break;
 				case 'cdmode':
-					$data = file_get_contents ($path . "CDMODE" . trim ($i[1]) . ".bin");
-					$lba = (int)trim ($i[1]);
-					for ($j = 0; $j < strlen ($data); $j++)
-						$this->CD['cdemu']['sector'][$lba + $j]['mode'] = $data[$j];
+					if (count ($i) == 2) {
+						$data = file_get_contents ($path . "CDMODE" . trim ($i[1]) . ".bin");
+						$lba = (int)trim ($i[1]);
+						for ($j = 0; $j < strlen ($data); $j++)
+							$this->CD['cdemu']['sector'][$lba + $j]['mode'] = $data[$j];
+						break;
+					}
+					$mode = trim ($i[1]);
+					$lba_start = trim ($i[2]);
+					$lba_end = trim ($i[3]);
+					for ($j = (int)$lba_start; $j <= (int)$lba_end; $j++)
+						$this->CD['cdemu']['sector'][$j]['mode'] = $mode;
 					break;
 				case 'cdaddr':
 					$data = file_get_contents ($path . "CDADDR" . trim ($i[1]) . ".bin");
@@ -292,9 +303,6 @@ class CDEMU {
 					$lba = (int)trim ($i[1]);
 					for ($j = 0; $j < strlen ($data); $j += 4)
 						$this->CD['cdemu']['sector'][$lba + ($j / 4)]['edc'] = substr ($data, $j, 4);
-					break;
-				case 'cdedc_f2':
-					$this->CD['cdemu']['form2edc'] = (bool)trim ($i[1]);
 					break;
 				case 'cdecc':
 					$data = file_get_contents ($path . "CDECC" . trim ($i[1]) . ".bin");
@@ -524,7 +532,7 @@ class CDEMU {
 		$s['address'] = $this->lba2header ($lba);
 		$s['mode'] = $mode === false ? 0 : $mode;
 		$s['type'] = CDEMU_SECT_MODE0;
-		$s['data'] = str_pad ($data, 2336, "\x00");
+		$s['data'] = str_repeat ("\x00", 2336);
 		$s['sector'] = $s['sync'] . $this->lba2header ($lba) . chr ($s['mode']) . $s['data'];
 		return ($s);
 	}
@@ -1111,7 +1119,7 @@ class CDEMU {
 		if ($sector_start === false)
 			$sector_start = 0;
 		if ($sector_end === false)
-			$sector_end = $this->get_length (true);
+			$sector_end = $this->get_length (true) - 1;
 		$gap = false;
 		for ($i = $sector_start; $i <= $sector_end; $i++) {
 			if ($gap === false and !isset ($access[$i]))

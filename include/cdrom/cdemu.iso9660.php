@@ -208,7 +208,7 @@ class ISO9660 {
 	}
 	
 	// Returns directory record and parsed file information for file located at $path
-	public function &find_file ($path, $full_dump = false) {
+	public function &find_file ($path, $raw_interleaved = false) {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);
 		$fail = false;
@@ -240,19 +240,21 @@ class ISO9660 {
 				$f_info['lba'] -= 150; // Adjust address backwards 2 seconds
 				$f_info['track'] = $this->o_cdemu->get_track_by_sector ($f_info['lba']); // Track
 				$f_info['length'] = ($f_info['length'] / 2048 + 150) * 2352; // Calculate length for 2352 byte sectors, add 150 sectors
-			} else if ($file['extension']['xa']['attributes']['form2']) {
-				$f_info['type'] = ISO9660_FILE_XA; // Contains Mode2 XA Form2 sectors
-				if ($full_dump)
-					$f_info['length'] = $f_info['length'] / 2048 * 2324; // Calculate length for 2352 byte sectors
-				else
-					$f_info['length'] = $f_info['length'] / 2048 * 2352; // Calculate length for 2352 byte sectors
 			} else if ($file['extension']['xa']['attributes']['interleaved']) {
-				$f_info['type'] = ISO9660_FILE_XA; // Contains interleaved sectors
-				if ($full_dump)
-					$f_info['length'] = $f_info['length'] / 2048 * 2324; // Calculate length for 2352 byte sectors
-				else
-					$f_info['length'] = $f_info['length'] / 2048 * 2352; // Calculate length for 2352 byte sectors
-			}
+				$f_info['type'] = ISO9660_FILE_XA; // Contains interleaved sectors (Form 1 / Form 2)
+				if ($raw_interleaved)
+					$f_info['length'] = $f_info['length'] / 2048 * 2352; // Calculate length in sectors
+				else {
+					$lba_end = $f_info['lba'] + $f_info['length'] / 2048;
+					$f_info['length'] = 0;
+					for ($i = $f_info['lba']; $i < $lba_end; $i++) {
+						if (($s = $this->o_cdemu->read ($i)) === false)
+							break;
+						$f_info['length'] += strlen ($s['data']);
+					}
+				}
+			} else if ($file['extension']['xa']['attributes']['form2'])
+					$f_info['length'] = $f_info['length'] / 2048 * 2324; // Calculate length for 2324 byte sectors
 		}
 		return ($f_info);
 	}
@@ -301,21 +303,7 @@ class ISO9660 {
 				$length += strlen ($data['sector']);
 				$r_info['data'] .= $data['sector'];
 			} else if ($f_info['length'] - $length < strlen ($data['data'])) {
-				// IDEA: Check interleaved flag for hints on mixed sector files
-				if ($f_info['type'] == ISO9660_FILE_XA) { // XA File (?)
-					$t_null = true;
-					for ($i = $f_info['length'] - $length; $i <= strlen ($data['data']); $i++) {
-						if ($data['data'][$i - 1] != "\x00") {
-							$t_null = false;
-							break;
-						}
-					}
-					if ($t_null)
-						$data['data'] = substr ($data['data'], 0, $f_info['length'] - $length);
-					else
-						$data['data'] = $data['data'];
-				} else
-					$data['data'] = substr ($data['data'], 0, $f_info['length'] - $length);
+				$data['data'] = substr ($data['data'], 0, $f_info['length'] - $length);
 				$length += strlen ($data['data']);
 				$r_info['data'] .= $data['data'];
 			} else {

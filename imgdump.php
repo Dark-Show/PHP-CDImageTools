@@ -124,25 +124,12 @@ function cli_process_argv ($argv) {
 
 // Dump image loaded by cdemu
 function dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos) {
-	$index = array();
 	$r_info = $cdemu->analyze_image ($full_dump, $hash_algos, 'cli_dump_progress'); // Analyze entire image
 	$cdemu->enable_sector_access_list();
 	if (is_array ($r_info) and isset ($r_info['hash']) and isset ($r_info['hash']['full']))
 		cli_print_hashes ($r_info['hash']['full'], '  ');
-	if ($full_dump) {
-		$index['LENGTH'] = $cdemu->get_length (true); // Image length in sectors
-		$CD = $cdemu->get_layout();
-		// TODO: Support session listings (requires CDEMU support)
-		if (isset ($r_info['analytics']['form2edc']))
-			$index['CDEDC_F2'] = $r_info['analytics']['form2edc'] ? 1 : 0;
-		foreach ($CD['track'] as $track => $t) {
-			foreach ($t['index'] as $ii => $vv)
-				$t['index'][$ii] = str_pad ($vv, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT);
-			$index['TRACK'][] = [str_pad ($track, 2, "0", STR_PAD_LEFT), ($t['format'] == CDEMU_TRACK_AUDIO ? "AUDIO" : "DATA"), implode (" ", $t['index'])]; // Track/index listings
-		}
-		$i = dump_analytics ($cdemu, $dir_out, $r_info, $hash_algos); // Dump analytics
-		$index = array_merge ($index, $i);
-	}
+	if ($full_dump)
+		$index = dump_analytics ($cdemu, $dir_out, $r_info, $hash_algos); // Dump analytics
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) { // Dump each track
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
 		echo ("  Track $t\n");
@@ -159,7 +146,7 @@ function dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink
 			dump_audio ($cdemu, $dir_out, $file_out);
 		} else {
 			$i = dump_data ($cdemu, $dir_out, "Track $t/", $full_dump, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos);
-			if (isset ($i['LBA'])) {
+			if ($full_dump and isset ($i['LBA'])) {
 				if (!isset ($index['LBA']))
 					$index['LBA'] = $i['LBA'];
 				else {
@@ -224,7 +211,37 @@ function &dump_analytics ($cdemu, $dir_out, &$r_info, $hash_algos) {
 	$index = array();
 	if (!is_array ($r_info) or !isset ($r_info['analytics']))
 		return ($index);
-	if (isset ($r_info['analytics']['mode']))
+	$index['LENGTH'] = $cdemu->get_length (true); // Image length in sectors
+	$CD = $cdemu->get_layout();
+	// TODO: Support session listings (requires CDEMU support)
+	foreach ($CD['track'] as $track => $t) {
+		foreach ($t['index'] as $ii => $vv)
+			$t['index'][$ii] = str_pad ($vv, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT);
+		$index['TRACK'][] = [str_pad ($track, 2, "0", STR_PAD_LEFT), ($t['format'] == CDEMU_TRACK_AUDIO ? "AUDIO" : "DATA"), implode (" ", $t['index'])]; // Track/index listings
+	}
+	if (isset ($r_info['analytics']['form2edc']))
+		$index['F2EDC'] = $r_info['analytics']['form2edc'] ? 1 : 0;
+	if (isset ($r_info['analytics']['mode'])) {
+		$mode = false;
+		$lba = false;
+		$write = false;
+		for ($i = array_key_first ($r_info['analytics']['mode']); $i <= array_key_last ($r_info['analytics']['mode']) + 1; $i++) {
+			if (isset ($r_info['analytics']['mode'][$i])) {
+				if ($mode === false) {
+					$lba = $i;
+					$mode = $r_info['analytics']['mode'][$i];
+				} else if ($mode != $r_info['analytics']['mode'][$i])
+					$write = true;
+			}
+			if ($mode !== false and (!isset ($r_info['analytics']['mode'][$i]) or $write)) {
+				$index['CDMODE'][] = [$mode, str_pad ($lba, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT), str_pad ($i - 1, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT)];
+				$lba = $i;
+				$mode = isset ($r_info['analytics']['mode'][$i]) ? $r_info['analytics']['mode'][$i] : false;
+				$write = false;
+			}
+		}
+	}
+	if (isset ($r_info['analytics']['mode']) and count ($index['CDMODE']) > 10)
 		$index['CDMODE'] = dump_analytics_condensed ($cdemu, $r_info['analytics']['mode'], "CDMODE", ".bin", $dir_out, $hash_algos); // Dump sector mode
 	if (isset ($r_info['analytics']['address']))
 		$index['CDADDR'] = dump_analytics_condensed ($cdemu, $r_info['analytics']['address'], "CDADDR", ".bin", $dir_out, $hash_algos); // Dump invalid header addresses
@@ -356,7 +373,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 					mkdir ($dir_out . $track_dir . "contents" . $c, 0777, true);
 				continue;
 			}
-			if (($f_info = $iso9660->find_file ($c, $full_dump)) === false) {
+			if (($f_info = $iso9660->find_file ($c, !$full_dump)) === false) {
 				echo ("    Error: File not found\n");
 				continue;
 			}
