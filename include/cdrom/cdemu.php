@@ -683,7 +683,7 @@ class CDEMU {
 		}
 		
 		// Mode 2 XA
-		if (substr ($sector, 16, 4) == substr ($sector, 20, 4)) { // Detect XA extension
+		if (substr ($sector, 16, 4) != "\x00\x00\x00\x00" and substr ($sector, 16, 4) == substr ($sector, 20, 4)) { // Detect XA extension
 			$s['subheader'] = substr ($sector, 16, 8); // Subheader - XA data repeated 
 			$s['xa'] = $this->parse_xa (substr ($sector, 16, 4)); // XA Data
 			
@@ -897,7 +897,7 @@ class CDEMU {
 	}
 	
 	// Save image as ISO
-	public function save_iso ($file, $hash_algos, $cb_progress) {
+	public function save_iso ($file, $hash_algos = false, $cb_progress = false) {
 		$hash_algos = cdemu_hash_validate ($hash_algos);
 		if ($hash_algos === false and !$analyze)
 			return (false);
@@ -1165,11 +1165,12 @@ class CDEMU {
 		return ($sectors);
 	}
 	
-	
+	// Limit sector buffer ram
 	public function enable_buffer_limit() {
 		$this->buffer_limit = true;
 	}
 	
+	// Unlimit sector buffer ram
 	public function disable_buffer_limit() {
 		$this->buffer_limit = false;
 	}
