@@ -496,7 +496,7 @@ class CDEMU {
 		$mode = isset ($this->CD['cdemu']['sector'][$lba]['mode']) ? $this->CD['cdemu']['sector'][$lba]['mode'] : false;
 		$addr = isset ($this->CD['cdemu']['sector'][$lba]['address']) ? $this->CD['cdemu']['sector'][$lba]['address'] : false;
 		$xa = isset ($this->CD['cdemu']['sector'][$lba]['xa']) ? $this->CD['cdemu']['sector'][$lba]['xa'] : false;
-		if (isset ($this->CD['cdemu']['form2edc']) and !$this->CD['cdemu']['form2edc'] and $this->CD['cdemu']['sector'][$lba]['xa']['submode']['form'] == 2)
+		if (isset ($this->CD['cdemu']['form2edc']) and !$this->CD['cdemu']['form2edc'] and isset ($this->CD['cdemu']['sector'][$lba]['xa']) and $this->CD['cdemu']['sector'][$lba]['xa']['submode']['form'] == 2)
 			$edc = "\x00\x00\x00\x00";
 		else
 			$edc = isset ($this->CD['cdemu']['sector'][$lba]['edc']) ? $this->CD['cdemu']['sector'][$lba]['edc'] : false;
@@ -896,6 +896,41 @@ class CDEMU {
 		return ($this->save_sector ($file, $s_start, $s_len, true, $hash_algos, $cb_progress));
 	}
 	
+	// Save image as ISO
+	public function save_iso ($file, $hash_algos, $cb_progress) {
+		$hash_algos = cdemu_hash_validate ($hash_algos);
+		if ($hash_algos === false and !$analyze)
+			return (false);
+		$fh = fopen ($file, 'w');
+		if (!is_callable ($cb_progress))
+			$cb_progress = false;
+		$r_info = array();
+		if ($hash_algos !== false) {
+			foreach ($hash_algos as $algo)
+				$r_info['hash'][$algo] = hash_init ($algo); // Init full hash
+		}
+		if (!$this->seek (0))
+			return (false); // Seek error
+		$s_len = $this->get_length (true);
+		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
+			$sector = $this->read();
+			if (!is_resource ($fh) or fwrite ($fh, $sector['data']) === false)
+				return (false); // Write failure
+			if ($hash_algos !== false) {
+				foreach ($r_info['hash'] as $hash)
+					hash_update ($hash, $sector['data']);
+			}
+			if ($cb_progress !== false)
+				call_user_func ($cb_progress, $s_len, $s_cur + 1);
+		}
+		if ($hash_algos !== false) {
+			foreach ($r_info['hash'] as $algo => $hash)
+				$r_info['hash'][$algo] = hash_final ($hash, false);
+		}
+		fclose ($fh);
+		return ($r_info);
+	}
+	
 	// Populate LUTs for EDC and ECC
 	// Ported From: ECM Tools (Neill Corlett)
 	private function lut_init () {
@@ -1027,11 +1062,9 @@ class CDEMU {
 		}
 		while ($minutes > 99)
 			$minutes -= 99;
-		
 		$minutes = str_pad ($minutes, 2, "0", STR_PAD_LEFT);
 		$seconds = str_pad ($seconds, 2, "0", STR_PAD_LEFT);
 		$frames = str_pad ($frames, 2, "0", STR_PAD_LEFT);
-		
 		return (hex2bin ($minutes) . hex2bin ($seconds) . hex2bin ($frames));
 	}
 
@@ -1172,9 +1205,15 @@ class CDEMU {
 		return ($this->CD['sector_count']);
 	}
 	
-	// CD image layout
+	// Get internal image layout
 	public function get_layout() {
 		return ($this->CD);
+	}
+	
+	// Set internal image layout
+	public function set_layout ($layout) {
+		$this->CD = $layout;
+		return (true);
 	}
 }
 
