@@ -19,12 +19,12 @@ const CDEMU_SECT_MODE2FORM2 = 5; // Mode 2 XA Form 2 (2324b)
 
 // ISO9660 File Types
 const ISO9660_FILE = 0; // Regular File
-const ISO9660_FILE_XA = 1; // Includes Mode 2 Sectors
+const ISO9660_FILE_XA = 1; // XA-Interleaved or XA-Mode2
 const ISO9660_FILE_CDDA = 2; // Link to CDDA Track
 
-
-const ISO9660_MAP_VOLUME_DESCRIPTOR = 0; // Link to CDDA Track
-const ISO9660_MAP_PATH_TABLE = 1; // Link to CDDA Track
-const ISO9660_MAP_DIRECTORY_RECORD = 2; // Link to CDDA Track
+// ISO9660 Filesystem Map
+const ISO9660_MAP_VOLUME_DESCRIPTOR = 0; // Volume Descriptor
+const ISO9660_MAP_PATH_TABLE = 1; // Path Table
+const ISO9660_MAP_DIRECTORY_RECORD = 2; // Directory Record
 
 ?>

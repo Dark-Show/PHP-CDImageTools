@@ -858,8 +858,10 @@ class CDEMU {
 			$cb_progress = false;
 		$r_info = array();
 		$r_info['length'] = 0;
-		if ($file === false)
+		if ($file === false) {
+			$r_info['file'] = $file;
 			$r_info['data'] = '';
+		}
 		if ($hash_algos !== false) {
 			foreach ($hash_algos as $algo)
 				$r_info['hash'][$algo] = hash_init ($algo); // Init hash
@@ -912,6 +914,8 @@ class CDEMU {
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
 		$r_info = array();
+		$r_info['file'] = $file;
+		$r_info['length'] = 0;
 		if ($hash_algos !== false) {
 			foreach ($hash_algos as $algo)
 				$r_info['hash'][$algo] = hash_init ($algo); // Init full hash
@@ -919,7 +923,6 @@ class CDEMU {
 		if (!$this->seek (0))
 			return (false); // Seek error
 		$s_len = $this->get_length (true);
-		$r_info['length'] = 0;
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
 			$sector = $this->read();
 			if (strlen ($sector['data']) > 2048)

@@ -288,7 +288,7 @@ class ISO9660 {
 		if (($this->o_cdemu->seek ($f_info['lba'])) === false)
 			return ($fail);
 		if ($file_out !== false) {
-			$r_info['file_out'] = $file_out;
+			$r_info['file'] = $file_out;
 			$fhm = 'w';
 			if ($ver_merge and ($fver = $this->get_fileid_version ($f_info['record']['file_id'])) !== false and $fver > 1) // Handle file versions
 				$fhm = 'a';
