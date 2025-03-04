@@ -243,7 +243,7 @@ class ISO9660 {
 			} else if ($file['extension']['xa']['attributes']['interleaved']) {
 				$f_info['type'] = ISO9660_FILE_XA;
 				if ($raw_interleaved)
-					$f_info['length'] = $f_info['length'] / 2048 * 2352; // Calculate length for 2325 byte sectors
+					$f_info['length'] = $f_info['length'] / 2048 * 2352; // Calculate length for 2352 byte sectors
 				else { // Add all sector data lengths
 					$lba_end = $f_info['lba'] + $f_info['length'] / 2048 - 1;
 					$f_info['length'] = 0;

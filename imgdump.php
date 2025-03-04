@@ -178,12 +178,8 @@ function &dump_verify ($cdemu, $dir_out) {
 		$d1 = $cdemu->read();
 		$d2 = $cdemu2->read();
 		cli_dump_progress ($cdemu->get_length (true), $i + 1);
-		if ($d1['sector'] != $d2['sector']) {
-			//echo (bin2hex ($d1['sector']) . "\n\n");
-			//echo (bin2hex ($d2['sector']) . "\n");
-			//die();
+		if ($d1['sector'] != $d2['sector'])
 			$c_sect[$i] = $d1['sector'];
-		}
 	}
 	return ($c_sect);
 }
@@ -305,6 +301,7 @@ function dump_audio ($cdemu, $dir_out, $filename) {
 	return (true);
 }
 
+// Dump ISO9660 filesystem data
 function dump_filesystem ($cdemu, $iso9660, $dir_out, $file_prefix, $file_postfix, $hash_algos) {
 	$map = $iso9660->get_filesystem_map();
 	$index = array();
@@ -412,12 +409,8 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 			}
 			if (isset ($r_info['hash']))
 				cli_print_hashes ($r_info['hash']);
-			if (isset ($r_info['error']) and isset ($r_info['error']['length'])) {
-				if ($r_info['length'] < $r_info['error']['length'])
-					echo ("      Alert: File may be corrupted, reported file length " . $r_info['error']['length'] . "\n");
-				else
-					echo ("      Alert: File had trailing data, reported file length " . $r_info['error']['length'] . "\n");
-			}
+			if (isset ($r_info['error']) and isset ($r_info['error']['length']))
+				echo ("      Alert: File may be corrupted, reported file length " . $r_info['error']['length'] . "\n");
 		}
 		
 		// Dump any unaccessed sectors within the data track

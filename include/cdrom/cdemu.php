@@ -374,7 +374,7 @@ class CDEMU {
 	}
 	
 	// Read currect sector from image, optionally seek and/or limit processing to only return sector data
-	public function &read ($seek = false, $limit_processing = false) {
+	public function &read ($seek = false) {
 		$fail = false;
 		if ($seek !== false and $seek != $this->sector and !$this->seek ($seek))
 			return ($fail); // Seek failed
@@ -401,7 +401,7 @@ class CDEMU {
 				if (strlen ($data) < $sector_size)
 					break;
 				if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_BIN)
-					$this->buffer[$i] = $limit_processing ? array ('sector' => $data) : $this->read_bin_sector ($data); // Process BIN data into sector
+					$this->buffer[$i] = $this->read_bin_sector ($data); // Process BIN data into sector
 				else if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_ISO)
 					$this->buffer[$i] = $this->gen_sector_mode1 ($data, $i); // Generate Mode 1 sector from ISO data
 				else
@@ -683,7 +683,7 @@ class CDEMU {
 		}
 		
 		// Mode 2 XA
-		if (substr ($sector, 16, 4) != "\x00\x00\x00\x00" and substr ($sector, 16, 4) == substr ($sector, 20, 4)) { // Detect XA extension
+		if (substr ($sector, 16, 4) == substr ($sector, 20, 4)) { // Detect XA extension
 			$s['subheader'] = substr ($sector, 16, 8); // Subheader - XA data repeated 
 			$s['xa'] = $this->parse_xa (substr ($sector, 16, 4)); // XA Data
 			
@@ -750,7 +750,7 @@ class CDEMU {
 	
 	private function &parse_xa ($data) {
 		$xa = array();
-		$xa['raw'] = $data;;
+		$xa['raw'] = $data;
 		$xa['file_number'] = ord ($data[0]); // File Number
 		$xa['channel_number'] = ord ($data[1]); // Channel Number
 		$xa['submode']['eof'] = (ord ($data[2]) >> 7) & 0x01; // End of File
@@ -912,10 +912,14 @@ class CDEMU {
 		if (!$this->seek (0))
 			return (false); // Seek error
 		$s_len = $this->get_length (true);
+		$r_info['length'] = 0;
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
 			$sector = $this->read();
+			if (strlen ($sector['data']) > 2048)
+				$sector['data'] = substr ($sector['data'], 0, 2048); // Trim
 			if (!is_resource ($fh) or fwrite ($fh, $sector['data']) === false)
 				return (false); // Write failure
+			$r_info['length'] += strlen ($sector['data']);
 			if ($hash_algos !== false) {
 				foreach ($r_info['hash'] as $hash)
 					hash_update ($hash, $sector['data']);
@@ -927,7 +931,8 @@ class CDEMU {
 			foreach ($r_info['hash'] as $algo => $hash)
 				$r_info['hash'][$algo] = hash_final ($hash, false);
 		}
-		fclose ($fh);
+		if (is_resource ($fh))
+			fclose ($fh);
 		return ($r_info);
 	}
 	
