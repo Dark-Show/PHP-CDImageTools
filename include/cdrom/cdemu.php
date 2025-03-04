@@ -781,20 +781,26 @@ class CDEMU {
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
 		$r_info = array();
+		$r_info['full']['length'] = 0;
 		if ($hash_algos !== false) {
 			foreach ($hash_algos as $algo)
-				$r_info['hash']['full'][$algo] = hash_init ($algo); // Init full hash
+				$r_info['full']['hash'][$algo] = hash_init ($algo); // Init full hash
 		}
 		if (!$this->set_track (1))
 			return (false); // Track change error (Image ended)
 		$s_len = $this->get_length (true);
 		for ($s_cur = 0; $s_cur < $s_len; $s_cur++) {
 			$t_cur = $this->get_track(); // Get current track
-			if ($hash_algos !== false and !isset ($r_info['hash']['track'][$t_cur])) {
-				foreach ($hash_algos as $algo)
-					$r_info['hash']['track'][$t_cur][$algo] = hash_init ($algo); // Init track hash
+			if (!isset ($r_info['track'][$t_cur])) {
+				$r_info['track'][$t_cur]['length'] = 0;
+				if ($hash_algos !== false) {
+					foreach ($hash_algos as $algo)
+						$r_info['track'][$t_cur]['hash'][$algo] = hash_init ($algo); // Init track hash
+				}
 			}
-			$sector = $this->read (false, $analyze ? false : true);
+			$sector = $this->read (false);
+			$r_info['full']['length'] += strlen ($sector['sector']);
+			$r_info['track'][$t_cur]['length'] += strlen ($sector['sector']);
 			if ($analyze) {
 				if (isset ($sector['mode']))
 					$r_info['analytics']['mode'][$s_cur] = $sector['mode']; // Mode
@@ -817,9 +823,9 @@ class CDEMU {
 				}
 			}
 			if ($hash_algos !== false) {
-				foreach ($r_info['hash']['full'] as $hash)
+				foreach ($r_info['full']['hash'] as $hash)
 					hash_update ($hash, $sector['sector']);
-				foreach ($r_info['hash']['track'][$t_cur] as $hash)
+				foreach ($r_info['track'][$t_cur]['hash'] as $hash)
 					hash_update ($hash, $sector['sector']);
 			}
 			if ($cb_progress !== false)
@@ -833,11 +839,11 @@ class CDEMU {
 			unset ($r_info['analytics']['form2_edc_log']);
 		}
 		if ($hash_algos !== false) {
-			foreach ($r_info['hash']['full'] as $algo => $hash)
-				$r_info['hash']['full'][$algo] = hash_final ($hash, false);
-			foreach ($r_info['hash']['track'] as $t_cur => $h) {
-				foreach ($h as $algo => $hash)
-					$r_info['hash']['track'][$t_cur][$algo] = hash_final ($hash, false);
+			foreach ($r_info['full']['hash'] as $algo => $hash)
+				$r_info['full']['hash'][$algo] = hash_final ($hash, false);
+			foreach ($r_info['track'] as $t_cur => $t) {
+				foreach ($t['hash'] as $algo => $hash)
+					$r_info['track'][$t_cur]['hash'][$algo] = hash_final ($hash, false);
 			}
 		}
 		return ($r_info);
@@ -845,30 +851,34 @@ class CDEMU {
 	
 	// Save sectors to $file
 	// Note: $length is in sectors, not filesize
-	// Note: If $file is false only hash will be computed
+	// Note: If $file is false data will be returned
 	public function save_sector ($file, $sector, $length = 1, $raw = true, $hash_algos = false, $cb_progress = false) {
 		$hash_algos = cdemu_hash_validate ($hash_algos);
-		if ($file === false and $hash_algos === false) // Nothing to do
-			return (false);
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
+		$r_info = array();
+		$r_info['length'] = 0;
+		if ($file === false)
+			$r_info['data'] = '';
 		if ($hash_algos !== false) {
-			$hashes = array();
 			foreach ($hash_algos as $algo)
-				$hashes[$algo] = hash_init ($algo); // Init hash
+				$r_info['hash'][$algo] = hash_init ($algo); // Init hash
 		}
 		if ($sector >= $this->CD['sector_count'])
 			return (false);
 		if ($file !== false and ($fh = fopen ($file, 'w')) === false)
 			return (false); // File error: could not open file for writing
 		for ($pos = 0; $pos < $length; $pos++) {
-			if ($sector + $pos >= $this->CD['sector_count'] or ($data = $this->read ($sector + $pos, $raw)) === false)
+			if ($sector + $pos >= $this->CD['sector_count'] or ($data = $this->read ($sector + $pos)) === false)
 				continue; // Sector read error
 			$data = $raw ? $data['sector'] : $data['data'];
 			if ($file !== false and fwrite ($fh, $data) === false)
 				return (false); // File error: out of space
+			if ($file === false)
+				$r_info['data'] . $data;
+			$r_info['length'] += strlen ($data);
 			if ($hash_algos !== false) {
-				foreach ($hashes as $hash)
+				foreach ($r_info['hash'] as $hash)
 					hash_update ($hash, $data);
 			}
 			if ($cb_progress !== false)
@@ -879,11 +889,10 @@ class CDEMU {
 			fclose ($fh);
 		}
 		if ($hash_algos !== false) {
-			foreach ($hashes as $algo => $hash)
-				$hashes[$algo] = hash_final ($hash, false);
-			return ($hashes);
+			foreach ($r_info['hash'] as $algo => $hash)
+				$r_info['hash'][$algo] = hash_final ($hash, false);
 		}
-		return (true);	
+		return ($r_info);
 	}
 	
 	// Save track to file, with optional hashing support
@@ -897,10 +906,8 @@ class CDEMU {
 	}
 	
 	// Save image as ISO
-	public function save_iso ($file, $hash_algos = false, $cb_progress = false) {
+	public function save_iso ($file, $hash_algos, $cb_progress = false) {
 		$hash_algos = cdemu_hash_validate ($hash_algos);
-		if ($hash_algos === false and !$analyze)
-			return (false);
 		$fh = fopen ($file, 'w');
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
@@ -933,6 +940,82 @@ class CDEMU {
 		}
 		if (is_resource ($fh))
 			fclose ($fh);
+		return ($r_info);
+	}
+	
+	// Save image as CUE and related files
+	public function save_cue ($dir_out, $name, $by_track = false, $hash_algos = false, $cb_progress = false) {
+		$hash_algos = cdemu_hash_validate ($hash_algos);
+		$r_info = array();
+		$t_count = count ($this->CD['track']);
+		if (!is_array ($this->CD['track']) or $t_count == 0)
+			return (false);
+		$tracks = $this->CD['track'];
+		if (!is_callable ($cb_progress))
+			$cb_progress = false;
+		if (!$this->seek (0))
+			return (false); // Seek error (EOD)
+		$s_len = $this->get_length (true);
+		$fh = false;
+		$d_mode = 1;
+		for ($pos = 0; $pos <= $s_len; $pos++) {
+			$t = $this->get_track();
+			if (!isset ($t_last) or $t_last != $t or $pos == $s_len) {
+				if (is_resource ($fh) and ($pos == $s_len or $by_track)) {
+					fclose ($fh);
+					if ($hash_algos !== false) {
+						foreach ($info['hash'] as $algo => $hash)
+							$info['hash'][$algo] = hash_final ($hash, false);
+					}
+					$r_info[] = $info;
+					if ($pos == $s_len)
+						break;
+				}
+				$tracks[$t]['file'] = $by_track ? "$name (Track " . str_pad ($t, strlen ($t_count), "0", STR_PAD_LEFT) . ").bin" : "$name.bin";
+				if (!is_resource ($fh) or $by_track) {
+					$fh = fopen ($dir_out . $tracks[$t]['file'], 'w');
+					$info = array();
+					$info['file'] = $dir_out . $tracks[$t]['file'];
+					$info['length'] = 0;
+					if ($hash_algos !== false) {
+						foreach ($hash_algos as $algo)
+							$info['hash'][$algo] = hash_init ($algo);
+					}
+				}
+				$t_last = $t;
+			}
+			if (($s = $this->read()) == false)
+				return (false);
+			fwrite ($fh, $s['sector']);
+			$info['length'] += strlen ($s['sector']);
+			if ($hash_algos !== false) {
+				foreach ($info['hash'] as $hash)
+					hash_update ($hash, $s['sector']);
+			}
+			if ($d_mode < 2 and isset ($s['mode']) and $s['mode'] > 1)
+				$d_mode = 2;
+			if ($cb_progress !== false)
+				call_user_func ($cb_progress, $s_len, $pos + 1);
+		}
+		$data = "";
+		foreach ($tracks as $t => $i) {
+			if (!isset ($last_file) or $last_file != $i['file'])
+				$data .= "FILE \"" . ($last_file = $i['file']) . "\" " . "BINARY" . "\r\n";
+			$data .= "  TRACK " . str_pad ($t, 2, "0", STR_PAD_LEFT) . " " . ($i['format'] == CDEMU_TRACK_AUDIO ? "AUDIO" : "MODE$d_mode/2352") . "\r\n";
+			foreach ($i['index'] as $index => $s)
+				$data .= "    INDEX " . str_pad ($index, 2, "0", STR_PAD_LEFT) . " " . ($by_track ? $this->lba2msf ($s - $i['lba']) : $this->lba2msf ($s)) . "\r\n";
+		}
+		$info = array ('file' => $dir_out . $name . ".cue", 'length' => strlen ($data));
+		if (file_put_contents ($info['file'], $data) === false)
+			return (false);
+		if ($hash_algos !== false) {
+			foreach ($hash_algos as $algo) {
+				$info['hash'][$algo] = hash_init ($algo);
+				hash_update ($info['hash'][$algo], $data);
+				$info['hash'][$algo] = hash_final ($info['hash'][$algo], false);
+			}
+		}
+		$r_info[] = $info;
 		return ($r_info);
 	}
 	
@@ -1134,9 +1217,10 @@ class CDEMU {
 	
 	// CD length
 	public function get_length ($sector = false) {
+		$s = isset ($this->CD['sector_count']) ? $this->CD['sector_count'] : 0;
 		if ($sector)
-			return ($this->CD['sector_count']);
-		return ($this->lba2msf ($this->CD['sector_count']));
+			return ($s);
+		return ($this->lba2msf ($s));
 	}
 	
 	// Current CD time

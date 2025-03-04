@@ -4,29 +4,38 @@
 // Title: CD-ROM Image Dumper
 // Description: Dumps CD images to directories
 // Author: Greg Michalik
-const VERSION = '0.1';
 
 include ('include/cdrom/cdemu.const.php');
 include ('include/cdrom/cdemu.common.php');
 include ('include/cdrom/cdemu.php');
 include ('include/cdrom/cdemu.iso9660.php');
 
+const VERSION = '0.1';
+
+// Application modes
+const MODE_DUMP = 0;
+const MODE_EXPORT = 1;
+
 cli_process_argv ($argv);
 
 function cli_process_argv ($argv) {
-	echo ("CD-ROM Image Dumper v" . VERSION . "\n");
-	if (count ($argv) == 1)
-		cli_display_help ($argv);
+	$hash_algos = ['crc32b', 'md5', 'sha1', 'sha256'];
+	$e_format = ['cdemu', 'cue', 'iso'];
+	$hash = false;
+	$name = false;
 	$dir_out = "output/";
-	$hash_algos = false;
-	$full_dump = false;
+	$mode = MODE_DUMP;
 	$filename_trim = false;
 	$cdda_symlink = false;
 	$xa_riff = false;
 	$ram = false;
+	$cue_track = false;
+	echo ("CD-ROM Image Dumper v" . VERSION . "\n");
+	if (count ($argv) == 1)
+		cli_display_help ($name, $dir_out, false, $hash_algos, $e_format);
 	for ($i = 1; $i < count ($argv); $i++) {
 		switch ($argv[$i]) {
-			case '-cde':
+			case '-cdemu':
 				if (isset ($cue) or isset ($iso) or isset ($bin) or !isset ($argv[$i + 1]))
 					die ("Error: Invalid arguments\n");
 				$index = $argv[$i + 1];
@@ -61,7 +70,7 @@ function cli_process_argv ($argv) {
 					die ("Error: Can not access '" . $argv[$i + 1] . "'\n");
 				$i++;
 				break;
-			case '-output':
+			case '-dir':
 				if (!isset ($argv[$i + 1]))
 					die ("Error: Missing output directory\n");
 				$dir_out = $argv[$i + 1];
@@ -69,8 +78,39 @@ function cli_process_argv ($argv) {
 					$dir_out .= '/';
 				$i++;
 				break;
-			case '-full':
-				$full_dump = true;
+			case '-cue_track':
+				$cue_track = true;
+				break;
+			case '-export':
+				if (!isset ($argv[$i + 1]))
+					die ("Error: Missing export format\n");
+				$format = $argv[$i + 1];
+				if (is_numeric ($format)) {
+					$format = (int)$format;
+					if (!isset ($e_format[$format]))
+						die ("Error: Export format $format does not exist");
+				} else if (is_string ($format)) {
+					$f = false;
+					foreach ($e_format as $e_i => $e_t) {
+						if ($e_t == strtolower ($format)) {
+							$format = $e_i;
+							$f = true;
+						}
+					}
+					if (!$f)
+						die ("Error: Export format $format does not exist");
+				}
+				$mode = MODE_EXPORT;
+				$i++;
+				break;
+			case '-name':
+				if (!isset ($argv[$i + 1]))
+					die ("Error: Missing output name\n");
+				$name = $argv[$i + 1];
+				$i++;
+				break;
+			case '-dump':
+				$mode = MODE_DUMP;
 				break;
 			case '-trim_name':
 				$filename_trim = true;
@@ -81,24 +121,41 @@ function cli_process_argv ($argv) {
 			case '-riff':
 				$xa_riff = true;
 				break;
-			case '-hash':
-				$hash_algos = ['crc32b', 'sha256', 'md5'];
-				break;
 			case '-ram':
 				$ram = true;
 				break;
+			case '-hash':
+				$hash = true;
+				break;
+			case '-hashes':
+				cli_display_help (true, $hash_algos, $e_format);
+			case '-hash_set':
+				if (!isset ($argv[$i + 1]))
+					die ("Error: Missing output name\n");
+				$hash_algos = cdemu_hash_validate (explode ("|", $argv[$i + 1]));
+				$i++;
+				break;
 			default:
-				cli_display_help ($argv);
+				cli_display_help (false, $hash_algos, $e_format);
 		}
-	}
-	if ($full_dump) {
-		$filename_trim = false;
-		$cdda_symlink = false;
-		$xa_riff = false;
 	}
 	if (!is_dir ($dir_out) and !mkdir ($dir_out, 0777, true))
 		die ("Error: Could not create directory '$dir_out'\n");
-	
+	if ($name == false) {
+		if (isset ($index))
+			$name = basename ($index);
+		else if (isset ($cue))
+			$name = basename ($cue);
+		else if (isset ($iso))
+			$name = basename ($iso);	
+		else if (isset ($bin))
+			$name = basename ($bin[0]);
+		if (strpos ($name, ".") !== false) {
+			$name = explode (".", $name);
+			unset ($name[count ($name) - 1]);
+			$name = implode (".", $name);
+		}
+	}
 	$cdemu = new CDEMU;
 	if ($ram)
 		$cdemu->disable_buffer_limit();
@@ -117,24 +174,50 @@ function cli_process_argv ($argv) {
 				die ("Error: Failed to load bin file '$b'\n");
 		}
 	}
+	if ($cdemu->get_length (true) == 0)
+		die ("Error: No image loaded\n");
 	
-	dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos);
+	if ($mode == MODE_DUMP)
+		dump_image ($cdemu, $dir_out, false, false, $filename_trim, $cdda_symlink, $xa_riff, $hash ? $hash_algos : false);
+	else if ($mode == MODE_EXPORT) {
+		switch ($format) {
+			case 0: // CDEMU
+				dump_image ($cdemu, $dir_out, true, $name, false, false, false, $hash ? $hash_algos : false);
+				break;
+			case 1: // CUE
+				if (($r_info = $cdemu->save_cue ($dir_out, $name, $cue_track, $hash ? $hash_algos : false, 'cli_dump_progress')) === false)
+					die ("Error: Export of CUE failed");
+				foreach ($r_info as $info) {
+					echo ("  " . basename ($info['file']) . "\n");
+					cli_print_info ($info, '    ');
+				}
+				break;
+			case 2: // ISO
+				// TODO: Warn if data loss will occur
+				echo ("  $name.iso\n");
+				if (($r_info = $cdemu->save_iso ($dir_out . $name . ".iso", $hash ? $hash_algos : false, 'cli_dump_progress')) === false)
+					die ("Error: Export of ISO failed");
+				else if (is_array ($r_info) and isset ($r_info['hash']))
+					cli_print_info ($r_info, '    ');
+				break;
+		}
+	}
 	$cdemu->eject(); // Eject Disk
 }
 
 // Dump image loaded by cdemu
-function dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos) {
+function dump_image ($cdemu, $dir_out, $full_dump, $full_name, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos) {
 	$r_info = $cdemu->analyze_image ($full_dump, $hash_algos, 'cli_dump_progress'); // Analyze entire image
 	$cdemu->enable_sector_access_list();
-	if (is_array ($r_info) and isset ($r_info['hash']) and isset ($r_info['hash']['full']))
-		cli_print_hashes ($r_info['hash']['full'], '  ');
+	if (is_array ($r_info) and isset ($r_info['full']))
+		cli_print_info ($r_info['full'], '  ');
 	if ($full_dump)
 		$index = dump_analytics ($cdemu, $dir_out, $r_info, $hash_algos); // Dump analytics
 	for ($track = 1; $track <= $cdemu->get_track_count(); $track++) { // Dump each track
 		$t = str_pad ($track, 2, '0', STR_PAD_LEFT);
 		echo ("  Track $t\n");
-		if (isset ($r_info['hash']['track'][$track]))
-			cli_print_hashes ($r_info['hash']['track'][$track], '    ');
+		if (isset ($r_info['track'][$track]))
+			cli_print_info ($r_info['track'][$track], '    ');
 		if (!$cdemu->set_track ($track))
 			die ("Error: Unexpected end of image!\n");
 		if ($cdemu->get_track_type() == CDEMU_TRACK_AUDIO) {
@@ -157,21 +240,21 @@ function dump_image ($cdemu, $dir_out, $full_dump, $filename_trim, $cdda_symlink
 		}
 	}
 	if ($full_dump) {
-		dump_index ($dir_out . "index.cdemu", $index); // Dump CDEMU index
-		$c_sect = dump_verify ($cdemu, $dir_out);
+		dump_index ($dir_out . $full_name . ".cdemu", $index); // Dump CDEMU index
+		$c_sect = dump_verify ($cdemu, $dir_out . $full_name . ".cdemu");
 		if (count ($c_sect) > 0) {
 			$index['CDSECT'] = dump_analytics_condensed ($cdemu, $c_sect, "CDSECT", ".bin", $dir_out, $hash_algos); // Dump sector corrections
-			dump_index ($dir_out . "index.cdemu", $index); // Redump CDEMU index
+			dump_index ($dir_out . $full_name . ".cdemu", $index); // Redump CDEMU index
 		}
 	}
 	return (true);
 }
 
 // Verify integrity of dump
-function &dump_verify ($cdemu, $dir_out) {
+function &dump_verify ($cdemu, $file) {
 	$c_sect = array(); // Sector corrections array
 	$cdemu2 = new CDEMU;
-	$cdemu2->load_cdemu_index ($dir_out . "index.cdemu");
+	$cdemu2->load_cdemu_index ($file);
 	$cdemu->seek (0);
 	$cdemu2->seek (0);
 	for ($i = 0; $i < $cdemu->get_length (true); $i++) {
@@ -210,6 +293,7 @@ function &dump_analytics ($cdemu, $dir_out, &$r_info, $hash_algos) {
 	$index['LENGTH'] = $cdemu->get_length (true); // Image length in sectors
 	$CD = $cdemu->get_layout();
 	// TODO: Support session listings (requires CDEMU support)
+	// TODO: Support subchannel data (requires CDEMU support)
 	foreach ($CD['track'] as $track => $t) {
 		foreach ($t['index'] as $ii => $vv)
 			$t['index'][$ii] = str_pad ($vv, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT);
@@ -261,10 +345,9 @@ function &dump_analytics_condensed ($cdemu, &$a, $file_prefix, $file_postfix, $d
 				$index[] = str_pad ($p_out, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT);
 				$file_out = $file_prefix . str_pad ($p_out, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . $file_postfix;
 				echo ("  $file_out\n");
-				if (($hash = hash_write_file ($dir_out . $file_out, $out, $hash_algos)) === false)
+				if (($r_info = hash_write_file ($dir_out . $file_out, $out, $hash_algos)) === false)
 					die ("Error: Could not write file '" . $dir_out . $file_out . "'\n");
-				if (is_array ($hash) and isset ($hash['hash']))
-					cli_print_hashes ($hash['hash'], '    ');
+				cli_print_info ($r_info, '    ');
 				$out = '';
 			}
 			if (isset ($p_out))
@@ -313,10 +396,9 @@ function dump_filesystem ($cdemu, $iso9660, $dir_out, $file_prefix, $file_postfi
 				$index[] = str_pad ($p_out, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT);
 				$file_out = $file_prefix . str_pad ($p_out, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . $file_postfix;
 				echo ("    $file_out\n");
-				if (($hash = hash_write_file ($dir_out . $file_out, $out, $hash_algos)) === false)
+				if (($r_info = hash_write_file ($dir_out . $file_out, $out, $hash_algos)) === false)
 					die ("Error: Could not write file '" . $dir_out . $file_out . "'\n");
-				if (is_array ($hash) and isset ($hash['hash']))
-					cli_print_hashes ($hash['hash'], '    ');
+					cli_print_info ($r_info, '      ');
 				$out = '';
 			}
 			if (isset ($p_out))
@@ -342,20 +424,9 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 		if (!$full_dump and !is_dir ($dir_out . $track_dir . "contents"))
 			mkdir ($dir_out . $track_dir . "contents", 0777, true);
 		
-		// System Area
-		if ($full_dump) {
-			$index['LBA'][] = str_pad ($cdemu->get_track_start (true), strlen ($cdemu->get_length (true)), '0', STR_PAD_LEFT);
-			$file_out = "LBA" . str_pad ($cdemu->get_track_start (true), strlen ($cdemu->get_length (true)), '0', STR_PAD_LEFT) . ".bin";
-		} else
-			$file_out = "SYSTEM.bin";
-		echo ("    $file_out\n");
-		$r_info = $iso9660->read_system_area ($dir_out . ($full_dump ? '' : $track_dir) . $file_out, $hash_algos);
-		if (isset ($r_info['hash']))
-			cli_print_hashes ($r_info['hash']);
-		
 		// File System
+		$i = dump_filesystem ($cdemu, $iso9660, $dir_out . ($full_dump ? '' : $track_dir), "LBA", ".bin", $hash_algos);
 		if ($full_dump) {
-			$i = dump_filesystem ($cdemu, $iso9660, $dir_out, "LBA", ".bin", $hash_algos);
 			foreach ($i as $in)
 				$index['LBA'][] = $in;
 		}
@@ -407,8 +478,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 				echo ("      Error: No file data, image ended\n");
 				continue;
 			}
-			if (isset ($r_info['hash']))
-				cli_print_hashes ($r_info['hash']);
+			cli_print_info ($r_info);
 			if (isset ($r_info['error']) and isset ($r_info['error']['length']))
 				echo ("      Alert: File may be corrupted, reported file length " . $r_info['error']['length'] . "\n");
 		}
@@ -421,8 +491,8 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 				$index['LBA'][] = str_pad ($sector, strlen ($cdemu->get_length (true)), '0', STR_PAD_LEFT);
 			$file_out = "LBA" . str_pad ($sector, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
 			echo ("    $file_out\n");
-			$hash = $cdemu->save_sector ($dir_out . ($full_dump ? '' : $track_dir) . $file_out, $sector, $length, false, $hash_algos, 'cli_dump_progress');
-			cli_print_hashes ($hash);
+			$r_info = $cdemu->save_sector ($dir_out . ($full_dump ? '' : $track_dir) . $file_out, $sector, $length, false, $hash_algos, 'cli_dump_progress');
+			cli_print_info ($r_info);
 		}
 	} else { // Dump unrecognized data track
 		$sector = $cdemu->get_track_start (true);
@@ -431,8 +501,8 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 			$index['LBA'][] = str_pad ($sector, strlen ($cdemu->get_length (true)), '0', STR_PAD_LEFT);
 		$file_out = "LBA" . str_pad ($sector, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
 		echo ("    $file_out\n");
-		$hash = $cdemu->save_sector ($dir_out . ($full_dump ? '' : $track_dir). $file_out, $sector, $length, false, $hash_algos, 'cli_dump_progress');
-		cli_print_hashes ($hash);
+		$r_info = $cdemu->save_sector ($dir_out . ($full_dump ? '' : $track_dir). $file_out, $sector, $length, false, $hash_algos, 'cli_dump_progress');
+		cli_print_info ($r_info);
 	}
 	return ($index); // Return track descriptor
 }
@@ -462,11 +532,14 @@ function symlink_relative_path ($target, $link) {
 	return ($r_target);
 }
 
-function cli_print_hashes ($hash, $pre = '      ') {
-	if (!is_array ($hash))
+function cli_print_info ($r_info, $pre = '      ') {
+	if (!is_array ($r_info))
 		return;
-	foreach ($hash as $algo => $res)
-		echo ("$pre$algo: $res\n");
+	echo ($pre . "Length: " . $r_info['length'] . "\n");
+	if (isset ($r_info['hash'])) {
+		foreach ($r_info['hash'] as $algo => $res)
+			echo ("$pre$algo: $res\n");
+	}
 	echo ("\n");
 }
 
@@ -477,24 +550,41 @@ function cli_dump_progress ($length, $pos) {
 		echo (str_repeat (' ', strlen ($cli)) . "\r");
 }
 
-function cli_display_help ($argv) {
-	echo ("  Loading Arguments:\n");
-	echo ("    -cue \"FILE.CUE\"    Input CUE file\n");
-	echo ("    -iso \"FILE.ISO\"    Input ISO file\n");
-	echo ("    -bin \"FILE.BIN\"    Input BIN file\n");
-	echo ("    -cde \"INDEX.CDEMU\" Input CDEMU index file\n");
-	echo ("    -output \"PATH/\"    Output directory\n");
-	echo ("    -ram               Load all read sectors into ram\n");
-	echo ("    -hash              Hash image and output files using: crc32b, sha256, md5\n\n");
-	echo ("  Dump Type Arguments:\n");
-	echo ("    -full              Dump image to format that can be reassembled\n");
-	echo ("    -trim_name         Trim version information from ISO9660 filenames\n");
-	echo ("    -link              Create symbolic links for XA-CDDA files\n");
-	echo ("    -riff              Dump XA files to RIFF-CDXA\n\n");
-	echo ("  Example Usages:\n");
-	echo ("    " . $argv[0] . " -cue \"input.cue\" -output \"output/\"\n");
-	echo ("    " . $argv[0] . " -iso \"input.iso\" -output \"output/\"\n");
-	echo ("    " . $argv[0] . " -bin \"Track01.bin\" -bin \"Track02.bin\" -output \"output/\"\n");
+function cli_display_help ($name, $dir_out, $hashes, $hash_algos, $e_format) {
+	echo ("  Input options:\n");
+	echo ("    -cue \"FILE.CUE\"     Open CUE file\n");
+	echo ("    -iso \"FILE.ISO\"     Open ISO file\n");
+	echo ("    -bin \"FILE.BIN\"     Open BIN file\n");
+	echo ("    -cdemu \"FILE.CDEMU\" Open CDEMU file\n\n");
+	echo ("  Output options:\n");
+	echo ("    -dir \"PATH\"         Output directory [$dir_out]\n");
+	echo ("    -export \"FORMAT\"    Export image as selected format\n");
+	echo ("    -dump               Dump image contents to local files\n");
+	echo ("    -ram                Load all read sectors into ram to increase access speeds\n\n");
+	echo ("  Hashing options:\n");
+	echo ("    -hashes             Display supported hash algorithms\n");
+	echo ("    -hash               Enable hashing\n");
+	echo ("    -hash_set \"A1|A2\"   Set hashing algorithms [");
+	for ($i = 0; $i < count ($hash_algos); $i++)
+		echo ($hash_algos[$i] . ($i + 1 < count ($hash_algos) ? ', ' : ''));
+	echo ("]\n\n");
+	echo ("  Dump options:\n");
+	echo ("    -trim_name          Trim version information from ISO9660 filenames\n");
+	echo ("    -link               Create symbolic links for XA-CDDA files\n");
+	echo ("    -riff               Dump XA interleaved files to RIFF-CDXA\n\n");
+	echo ("  Export options:\n");
+	echo ("    -name \"NAME\"        Set output filename without extension [Input filename]\n");
+	echo ("    -cue_track      Export BIN file per track\n\n");
+	echo ("  Export Formats:\n");
+	echo ("    ID     NAME:\n");
+	foreach ($e_format as $i => $name)
+		echo ("     $i      $name\n");
+	if ($hashes) {
+		echo ("\n");
+		echo ("  Hash Algorithms:\n");
+		foreach (hash_algos() as $hash)
+			echo ("    $hash\n");
+	}
 	die();
 }
 
