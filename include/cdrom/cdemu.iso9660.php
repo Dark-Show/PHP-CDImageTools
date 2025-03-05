@@ -303,7 +303,18 @@ class ISO9660 {
 				$length += strlen ($data['sector']);
 				$r_info['data'] .= $data['sector'];
 			} else if ($f_info['length'] - $length < strlen ($data['data'])) {
-				$data['data'] = substr ($data['data'], 0, $f_info['length'] - $length);
+				if ($full_dump) { // Make sure data is null before we chop
+					$t_null = true;
+					for ($i = $f_info['length'] - $length; $i <= strlen ($data['data']); $i++) {
+						if ($data['data'][$i - 1] != "\x00") {
+							$t_null = false;
+							break;
+						}
+					}
+					if ($t_null)
+						$data['data'] = substr ($data['data'], 0, $f_info['length'] - $length);
+				} else
+					$data['data'] = substr ($data['data'], 0, $f_info['length'] - $length);
 				$length += strlen ($data['data']);
 				$r_info['data'] .= $data['data'];
 			} else {

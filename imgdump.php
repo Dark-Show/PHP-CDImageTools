@@ -248,7 +248,6 @@ function cli_process_argv ($argv) {
 }
 
 // Dump image loaded by cdemu
-// TODO: Finish $r_info returns
 function dump_image ($cdemu, $dir_out, $full_dump, $full_name, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos) {
 	$r_info = $cdemu->analyze_image ($full_dump, $hash_algos, 'cli_print_progress'); // Analyze entire image
 	$cdemu->enable_sector_access_list();
@@ -296,7 +295,6 @@ function dump_image ($cdemu, $dir_out, $full_dump, $full_name, $filename_trim, $
 		$info = dump_index ($dir_out . $full_name . ".cdemu", $index, $hash_algos); // Dump CDEMU index
 		$c_sect = dump_verify ($cdemu, $dir_out . $full_name . ".cdemu");
 		if (count ($c_sect) > 0) {
-			// TODO: $r_info
 			$info = dump_analytics_condensed ($cdemu, $c_sect, "CDSECT", ".bin", $dir_out, $hash_algos); // Dump sector corrections
 			$index['CDSECT'] = $info['index'];
 			foreach ($info['files'] as $f)
@@ -560,8 +558,8 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 			}
 			$r_info['files'][] = $info;
 			cli_print_info ($info);
-			if (isset ($info['error']) and isset ($info['error']['length']))
-				echo ("      Alert: File may be corrupted, reported file length " . $r_info['error']['length'] . "\n");
+			if (isset ($info['error']) and isset ($info['error']['length']) and (!$full_dump or $info['error']['length'] > $info['length']))
+				echo ("      Warning: File may be corrupted, reported length " . $info['error']['length'] . "\n");
 		}
 		
 		// Dump any unaccessed sectors within the data track
