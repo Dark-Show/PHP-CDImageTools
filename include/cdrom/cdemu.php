@@ -672,14 +672,16 @@ class CDEMU {
 		// Mode 1
 		$m1_edc = $this->edc_compute ($sector, 0, 2064); // Header + Data
 		if (substr ($sector, 2064, 4) == $m1_edc) { // EDC Mode 1 Test
-			$s['type'] = CDEMU_SECT_MODE1;
-			$s['data'] = substr ($sector, 16, 2048); // 2048b
-			$s['edc'] = substr ($sector, 2064, 4);
-			$s['reserved'] = substr ($sector, 2068, 8);
-			$s['ecc'] = substr ($sector, 2076, 276);
-			if (($ecc = $this->ecc_compute ($sector)) != $s['ecc'])
-				$s['error']['ecc'] = $ecc;
-			return ($s);
+			if (($s['reserved'] = substr ($sector, 2068, 8)) == "\x00\x00\x00\x00\x00\x00\x00\x00") {
+				$s['type'] = CDEMU_SECT_MODE1;
+				$s['data'] = substr ($sector, 16, 2048); // 2048b
+				$s['edc'] = substr ($sector, 2064, 4);
+				$s['ecc'] = substr ($sector, 2076, 276);
+				if (($ecc = $this->ecc_compute ($sector)) != $s['ecc'])
+					$s['error']['ecc'] = $ecc;
+				return ($s);
+			} else
+				unset ($s['reserved']);
 		}
 		
 		// Mode 2 XA

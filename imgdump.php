@@ -1,8 +1,8 @@
 #!/usr/bin/env php
 <?php
 
-// Title: CD-ROM Image Dumper
-// Description: Dumps CD images to directories
+// Title: Disc Image Tool
+// Description: Convert between or dump from a variety of disc image formats
 // Author: Greg Michalik
 
 include ('include/cdrom/cdemu.const.php');
