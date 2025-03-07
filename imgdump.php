@@ -278,7 +278,7 @@ function dump_image ($cdemu, $dir_out, $full_dump, $full_name, $filename_trim, $
 			$info['file'] = $dir_out . $file_out;
 			$r_info['files'][] = $info;
 		} else { // Dump Data Track
-			$info = dump_data ($cdemu, $dir_out, "Track $t/", $full_dump, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos);
+			$info = dump_data ($cdemu, $dir_out, $track, $full_dump, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos);
 			if ($full_dump and isset ($info['index']['LBA'])) {
 				if (!isset ($index['LBA']))
 					$index['LBA'] = $info['index']['LBA'];
@@ -318,8 +318,12 @@ function &dump_verify ($cdemu, $file) {
 		$d1 = $cdemu->read();
 		$d2 = $cdemu2->read();
 		cli_print_progress ($cdemu->get_length (true), $i + 1);
-		if ($d1['sector'] != $d2['sector'])
+		if ($d1['sector'] != $d2['sector']) {
+			//echo (bin2hex ($d1['sector']) . "\n");
+			//echo (bin2hex ($d2['sector']) . "\n");
+			//die();
 			$c_sect[$i] = $d1['sector'];
+		}
 	}
 	return ($c_sect);
 }
@@ -490,10 +494,11 @@ function dump_filesystem ($cdemu, $iso9660, $dir_out, $file_prefix, $file_postfi
 }
 
 // Dump data track to $dir_out
-function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $cdda_symlink, $xa_riff, $hash_algos) {
+function dump_data ($cdemu, $dir_out, $track, $full_dump, $trim_filename, $cdda_symlink, $xa_riff, $hash_algos) {
 	$r_info = ['index' => [], 'files' => []];
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
+	$track_dir = "Track " . str_pad ($track, 2, '0', STR_PAD_LEFT) . "/";
 	if (!$full_dump and !is_dir ($dir_out . $track_dir))
 		mkdir ($dir_out . $track_dir, 0777, true);
 	if ($iso9660->init ($cdemu->get_track_start (true))) { // Process ISO9660 filesystem
@@ -563,6 +568,7 @@ function dump_data ($cdemu, $dir_out, $track_dir, $full_dump, $trim_filename, $c
 		}
 		
 		// Dump any unaccessed sectors within the data track
+		$cdemu->set_track ($track);
 		$t_start = $cdemu->get_track_start (true);
 		$t_end = $t_start + $cdemu->get_track_length (true) - 1;
 		foreach ($cdemu->get_sector_unaccessed_list ($t_start, $t_end) as $sector => $length) {
