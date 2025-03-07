@@ -240,11 +240,12 @@ class ISO9660 {
 				$f_info['lba'] -= 150; // Adjust address backwards 2 seconds
 				$f_info['track'] = $this->o_cdemu->get_track_by_sector ($f_info['lba']); // Track
 				$f_info['length'] = ($f_info['length'] / 2048 + 150) * 2352; // Calculate length for 2352 byte sectors, add 150 sectors
-			} else if ($file['extension']['xa']['attributes']['interleaved']) {
+			} else if ($file['extension']['xa']['attributes']['interleaved'] or $file['extension']['xa']['attributes']['form2']) {
 				$f_info['type'] = ISO9660_FILE_XA;
 				if ($raw_interleaved)
 					$f_info['length'] = $f_info['length'] / 2048 * 2352; // Calculate length for 2352 byte sectors
 				else { // Add all sector data lengths
+					//TODO: CDEMU format short-cut
 					$lba_end = $f_info['lba'] + $f_info['length'] / 2048 - 1;
 					$f_info['length'] = 0;
 					for ($i = $f_info['lba']; $i <= $lba_end; $i++) {
@@ -253,8 +254,7 @@ class ISO9660 {
 						$f_info['length'] += strlen ($s['data']);
 					}
 				}
-			} else if ($file['extension']['xa']['attributes']['form2'])
-				$f_info['length'] = $f_info['length'] / 2048 * 2324; // Calculate length for 2324 byte sectors
+			}
 		}
 		return ($f_info);
 	}
