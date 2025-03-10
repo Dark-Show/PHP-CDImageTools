@@ -329,7 +329,8 @@ class ISO9660 {
 			$fh = fopen ($file_out, $fhm);
 		}
 		$size = 0;
-		for ($pos = 0; $pos < $f_info['length']; $pos++) {
+		$end = false;
+		for ($pos = 0; !$end and $pos < $f_info['length']; $pos++) {
 			if (($data = $this->o_cdemu->read()) === false)
 				break;
 			if ($raw) {
@@ -349,6 +350,7 @@ class ISO9660 {
 					$data['data'] = substr ($data['data'], 0, $f_info['filesize'] - $size);
 				$size += strlen ($data['data']);
 				$r_info['data'] .= $data['data'];
+				$end = true;
 			} else {
 				$size += strlen ($data['data']);
 				$r_info['data'] .= $data['data'];
@@ -364,11 +366,12 @@ class ISO9660 {
 			}
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $f_info['length'], $pos + 1);
-
 		}
 		$r_info['length'] = $size; // Read length
 		if (isset ($f_info['filesize']) and $size != $f_info['filesize']) {
 			$r_info['error']['length'] = $f_info['filesize'];
+		}
+		if ($end or (isset ($r_info['error']) and isset ($r_info['error']['length']))) {
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $pos + 1, $pos + 1); // Clear
 		}

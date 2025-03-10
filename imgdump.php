@@ -34,6 +34,7 @@ function cli_process_argv ($argv) {
 	$ram = false;
 	$cue_track = false;
 	$hash_json = false;
+	$trim_overlap = false;
 	echo ("Disc Image Tools v" . VERSION . "\n");
 	if (count ($argv) == 1)
 		cli_print_help ($name, $dir_out, false, $hash_algos, $e_format);
@@ -116,6 +117,9 @@ function cli_process_argv ($argv) {
 			case '-dump':
 				$mode = MODE_DUMP;
 				break;
+			case '-trim_overlap':
+				$trim_overlap = true;
+				break;
 			case '-trim_name':
 				$filename_trim = true;
 				break;
@@ -193,12 +197,12 @@ function cli_process_argv ($argv) {
 	
 	if ($mode == MODE_DUMP) {
 		$cli['progress'] = " Dumping: ";
-		$r_info = dump_image ($cdemu, $dir_out, false, false, $filename_trim, $cdda_symlink, $xa_riff, $hash ? $hash_algos : false);
+		$r_info = dump_image ($cdemu, $dir_out, false, false, $filename_trim, $trim_overlap, $cdda_symlink, $xa_riff, $hash ? $hash_algos : false);
 	} else if ($mode == MODE_EXPORT) {
 		switch ($format) {
 			case 0: // CDEMU
 				$cli['progress'] = " Exporting CDEMU: ";
-				$r_info = dump_image ($cdemu, $dir_out, true, $name, false, false, false, $hash ? $hash_algos : false);
+				$r_info = dump_image ($cdemu, $dir_out, true, $name, false, false, false, false, $hash ? $hash_algos : false);
 				break;
 			case 1: // CUE
 				$cli['progress'] = " Exporting CUE: ";
@@ -248,7 +252,7 @@ function cli_process_argv ($argv) {
 }
 
 // Dump image loaded by cdemu
-function dump_image ($cdemu, $dir_out, $full_dump, $full_name, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos) {
+function dump_image ($cdemu, $dir_out, $full_dump, $full_name, $filename_trim, $trim_overlap, $cdda_symlink, $xa_riff, $hash_algos) {
 	$r_info = $cdemu->analyze_image ($full_dump, $hash_algos, 'cli_print_progress'); // Analyze entire image
 	$cdemu->enable_sector_access_list();
 	if (is_array ($r_info) and isset ($r_info['full']))
@@ -278,7 +282,7 @@ function dump_image ($cdemu, $dir_out, $full_dump, $full_name, $filename_trim, $
 			$info['file'] = $dir_out . $file_out;
 			$r_info['files'][] = $info;
 		} else { // Dump Data Track
-			$info = dump_data ($cdemu, $dir_out, $track, $full_dump, $filename_trim, $cdda_symlink, $xa_riff, $hash_algos);
+			$info = dump_data ($cdemu, $dir_out, $track, $full_dump, $filename_trim, $trim_overlap, $cdda_symlink, $xa_riff, $hash_algos);
 			if ($full_dump and isset ($info['index']['LBA'])) {
 				if (!isset ($index['LBA']))
 					$index['LBA'] = $info['index']['LBA'];
@@ -489,7 +493,7 @@ function dump_filesystem ($cdemu, $iso9660, $dir_out, $file_prefix, $file_postfi
 }
 
 // Dump data track to $dir_out
-function dump_data ($cdemu, $dir_out, $track, $full_dump, $trim_filename, $cdda_symlink, $xa_riff, $hash_algos) {
+function dump_data ($cdemu, $dir_out, $track, $full_dump, $trim_filename, $trim_overlap, $cdda_symlink, $xa_riff, $hash_algos) {
 	$r_info = ['index' => [], 'files' => []];
 	$iso9660 = new CDEMU\ISO9660;
 	$iso9660->set_cdemu ($cdemu);
@@ -519,7 +523,7 @@ function dump_data ($cdemu, $dir_out, $track, $full_dump, $trim_filename, $cdda_
 					mkdir ($dir_out . $track_dir . "contents" . $c, 0777, true);
 				continue;
 			}
-			if (($f_info = $iso9660->find_file ($c, $full_dump)) === false) {
+			if (($f_info = $iso9660->find_file ($c, $trim_overlap or $full_dump)) === false) {
 				echo ("    Error: File not found\n");
 				continue;
 			}
@@ -659,6 +663,7 @@ function cli_print_help ($name, $dir_out, $hashes, $hash_algos, $e_format) {
 	echo ("    -hash               Enable hashing\n");
 	echo ("    -hash_json          Save hashing information to file \"hash.json\"\n\n");
 	echo ("  Dump options:\n");
+	echo ("    -trim_overlap       Trim any overlap with filesystem or other files\n");
 	echo ("    -trim_name          Trim version information from ISO9660 filenames\n");
 	echo ("    -link               Create symbolic links for XA-CDDA files\n");
 	echo ("    -riff               Dump XA interleaved files to RIFF-CDXA\n\n");
