@@ -339,8 +339,8 @@ class ISO9660 {
 			} else if (isset ($f_info['filesize']) and $f_info['filesize'] - $size < strlen ($data['data'])) {
 				$t_null = true;
 				if ($full_dump) { // Make sure data is null before we chop
-					for ($i = $f_info['filesize'] - $size; $i <= strlen ($data['data']); $i++) {
-						if ($data['data'][$i - 1] != "\x00") {
+					for ($i = $f_info['filesize'] - $size; $i <= strlen ($data['data']) - 1; $i++) {
+						if ($data['data'][$i] != "\x00") {
 							$t_null = false;
 							break;
 						}
@@ -368,9 +368,8 @@ class ISO9660 {
 				call_user_func ($cb_progress, $f_info['length'], $pos + 1);
 		}
 		$r_info['length'] = $size; // Read length
-		if (isset ($f_info['filesize']) and $size != $f_info['filesize']) {
+		if (isset ($f_info['filesize']) and $size != $f_info['filesize'])
 			$r_info['error']['length'] = $f_info['filesize'];
-		}
 		if ($end or (isset ($r_info['error']) and isset ($r_info['error']['length']))) {
 			if ($cb_progress !== false)
 				call_user_func ($cb_progress, $pos + 1, $pos + 1); // Clear
