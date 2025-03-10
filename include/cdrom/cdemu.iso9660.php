@@ -557,7 +557,8 @@ class ISO9660 {
 		$dir = array();
 		$sec = 0;
 		do {
-			$data = $this->o_cdemu->read ($loc);
+			if (($data = $this->o_cdemu->read ($loc)) === false)
+				break;
 			$dr = $this->directory_record ($data['data']);
 			$sec = ($sec == 0 and isset ($dr['data_len_be'])) ? $dr['data_len_be'] / 2048 : $sec;
 			while ($dr['dr_len'] > 0) {
