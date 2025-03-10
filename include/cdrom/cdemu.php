@@ -8,7 +8,7 @@
 //   + CUE/BIN
 //     + Multifile support
 //   + ISO
-//   + CDEMU Full Dump Index
+//   + CDEMU
 //
 // Supported Sector Types
 //   + Audio
@@ -230,7 +230,8 @@ class CDEMU {
 		return (true);
 	}
 	
-	// Load index.cdemu file
+	// Load CDEMU file
+	// Returns true on success, false on error
 	public function load_cdemu_index ($file) {
 		if (!file_exists ($file))
 			return (false);
@@ -356,7 +357,7 @@ class CDEMU {
 		return (true);
 	}
 	
-	// Detect track and when multi-file close file
+	// Detect track based on current sector
 	private function track_detect() {
 		if ($this->sector < $this->CD['sector_count']) { // Same track check
 			$start = $this->CD['track'][$this->track]['lba'];
@@ -373,7 +374,7 @@ class CDEMU {
 		}
 	}
 	
-	// Read currect sector from image, optionally seek and/or limit processing to only return sector data
+	// Read currect sector from image, optionally seek to sector
 	public function &read ($seek = false) {
 		$fail = false;
 		if ($seek !== false and $seek != $this->sector and !$this->seek ($seek))

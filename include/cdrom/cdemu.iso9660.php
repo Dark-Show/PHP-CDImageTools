@@ -25,6 +25,7 @@ class ISO9660 {
 	private $iso_dr = false; // Directory Records
 	private $iso_ext = false; // Extension
 	private $iso_map = false; // Filesystem LBA Map
+	private $iso_file_map = false; // File LBA Map
 	
 	// Sets CDEMU object
 	public function set_cdemu ($cdemu) {
@@ -44,6 +45,7 @@ class ISO9660 {
 		$this->iso_dr = array();
 		$this->iso_ext = array();
 		$this->iso_map = array();
+		$this->iso_file_map = array();
 		if ($this->process_volume_descriptor() === false)
 			return (false);
 		$this->process_path_table();
@@ -75,6 +77,12 @@ class ISO9660 {
 	public function get_filesystem_map() {
 		ksort ($this->iso_map, SORT_NUMERIC);
 		return ($this->iso_map);
+	}
+	
+	// Returns file lba map array
+	public function get_file_map() {
+		ksort ($this->iso_file_map, SORT_NUMERIC);
+		return ($this->iso_file_map);
 	}
 	
 	// Check if string consists of only ASCII a characters
@@ -208,7 +216,7 @@ class ISO9660 {
 	}
 	
 	// Returns directory record and parsed file information for file located at $path
-	public function &find_file ($path, $raw_interleaved = false) {
+	public function &find_file ($path, $trim_overlap = false) {
 		$files = $this->iso_dr;
 		$path = explode ('/', $path);
 		$fail = false;
@@ -229,47 +237,73 @@ class ISO9660 {
 		if (!$f)
 			return ($fail); // File not found
 		$f_info = array();
-		$f_info['record'] = $file;
 		$f_info['type'] = ISO9660_FILE; // Regular File
+		$f_info['record'] = $file;
 		$f_info['lba'] = $file['ex_loc_be']; // Address
-		$f_info['length'] = $file['data_len_be']; // Length (Bytes)
+		$f_info['length'] = ceil ($file['data_len_be'] / 2048); // Calculate length in sectors
 		// if ($file['ex_loc_be'] != $file['ex_loc_le']) // TODO: Detect hidden file data
 		if (isset ($file['extension']['xa'])) { // Process XA
 			if ($file['extension']['xa']['attributes']['cdda']) {
 				$f_info['type'] = ISO9660_FILE_CDDA; // CDDA Link
 				$f_info['lba'] -= 150; // Adjust address backwards 2 seconds
+				$f_info['length'] += 150; // Adjust length by 150 sectors
 				$f_info['track'] = $this->o_cdemu->get_track_by_sector ($f_info['lba']); // Track
-				$f_info['length'] = ($f_info['length'] / 2048 + 150) * 2352; // Calculate length for 2352 byte sectors, add 150 sectors
-			} else if ($file['extension']['xa']['attributes']['interleaved'] or $file['extension']['xa']['attributes']['form2']) {
+			} else if ($file['extension']['xa']['attributes']['interleaved'] or $file['extension']['xa']['attributes']['form2'])
 				$f_info['type'] = ISO9660_FILE_XA;
-				if ($raw_interleaved)
-					$f_info['length'] = $f_info['length'] / 2048 * 2352; // Calculate length for 2352 byte sectors
-				else { // Add all sector data lengths
-					//TODO: CDEMU format short-cut
-					$lba_end = $f_info['lba'] + $f_info['length'] / 2048 - 1;
-					$f_info['length'] = 0;
-					for ($i = $f_info['lba']; $i <= $lba_end; $i++) {
-						if (($s = $this->o_cdemu->read ($i)) === false)
-							break;
-						$f_info['length'] += strlen ($s['data']);
-					}
+			else
+				$f_info['filesize'] = $file['data_len_be']; // Length (Bytes)
+		} else
+			$f_info['filesize'] = $file['data_len_be']; // Length (Bytes)
+		
+		if ($trim_overlap) {
+			// Check for filesystem overlap
+			foreach ($this->iso_map as $lba => $v) {
+				if ($f_info['lba'] < $lba and $f_info['lba'] + $f_info['length'] - 1 >= $lba) {
+					if (isset ($f_info['filesize']))
+						unset ($f_info['filesize']);
+					$f_info['length'] = $lba - $f_info['lba'];
+				}
+			}
+			// Check for file overlap
+			foreach ($this->iso_file_map as $lba => $v) {
+				if ($f_info['lba'] < $lba and $f_info['lba'] + $f_info['length'] - 1 >= $lba) {
+					if (isset ($f_info['filesize']))
+						unset ($f_info['filesize']);
+					$f_info['length'] = $lba - $f_info['lba'];
 				}
 			}
 		}
 		return ($f_info);
 	}
 	
+	// Read and count data length from each sector of $f_info and store in $f_info['filesize']
+	public function find_filesize (&$f_info, $cb_progress = false) {
+		// TODO: CDEMU format short-cut
+		if (!is_array ($f_info) or !isset ($f_info['lba']) or !isset ($f_info['length']))
+			return (false);
+		if (!is_callable ($cb_progress))
+			$cb_progress = false;
+		$lba_end = $f_info['lba'] + $f_info['length'] - 1;
+		$f_info['filesize'] = 0;
+		for ($i = $f_info['lba']; $i <= $lba_end; $i++) {
+			if (($s = $this->o_cdemu->read ($i)) === false)
+				break;
+			$f_info['filesize'] += strlen ($s['data']);
+			call_user_func ($cb_progress, $lba_end, $i);
+		}
+		return (false);
+	}
+	
 	// Read file data located at file record $f_info found using find_file
 	//   $file_out: If set data is saved and information returned, if not set the data is returned inside information array
+	//   $full_dump: If set data is checked to be null before trimming
 	//   $raw: Read full sectors
 	//   $header: If set and is string, hashed and prepended to output data
 	//   $hash_algos: Multiple hash algos can be supplied by array ('sha1', 'crc32b')
 	//   $cb_progress: function cli_progress ($length, $pos) { ... }
 	// Note: If ISO9660 file version > 1 $file_out is opened with 'a'
-	// TODO: Ensure files don't overlap filesystem sectors and/or other files when $full_dump
 	public function &file_read ($f_info, $file_out = false, $full_dump = false, $raw = false, $header = false, $ver_merge = false, $hash_algos = false, $cb_progress = false) {
 		$fail = false;
-		$length = 0;
 		$r_info = array();
 		if (!is_callable ($cb_progress))
 			$cb_progress = false;
@@ -294,31 +328,29 @@ class ISO9660 {
 				$fhm = 'a';
 			$fh = fopen ($file_out, $fhm);
 		}
-		if ($cb_progress !== false)
-			call_user_func ($cb_progress, $f_info['length'], $length);
-		while ($length < $f_info['length']) {
+		$size = 0;
+		for ($pos = 0; $pos < $f_info['length']; $pos++) {
 			if (($data = $this->o_cdemu->read()) === false)
 				break;
 			if ($raw) {
-				$length += strlen ($data['sector']);
+				$size += strlen ($data['sector']);
 				$r_info['data'] .= $data['sector'];
-			} else if ($f_info['length'] - $length < strlen ($data['data'])) {
+			} else if (isset ($f_info['filesize']) and $f_info['filesize'] - $size < strlen ($data['data'])) {
+				$t_null = true;
 				if ($full_dump) { // Make sure data is null before we chop
-					$t_null = true;
-					for ($i = $f_info['length'] - $length; $i <= strlen ($data['data']); $i++) {
+					for ($i = $f_info['filesize'] - $size; $i <= strlen ($data['data']); $i++) {
 						if ($data['data'][$i - 1] != "\x00") {
 							$t_null = false;
 							break;
 						}
 					}
-					if ($t_null)
-						$data['data'] = substr ($data['data'], 0, $f_info['length'] - $length);
-				} else
-					$data['data'] = substr ($data['data'], 0, $f_info['length'] - $length);
-				$length += strlen ($data['data']);
+				}
+				if ($t_null)
+					$data['data'] = substr ($data['data'], 0, $f_info['filesize'] - $size);
+				$size += strlen ($data['data']);
 				$r_info['data'] .= $data['data'];
 			} else {
-				$length += strlen ($data['data']);
+				$size += strlen ($data['data']);
 				$r_info['data'] .= $data['data'];
 			}
 			if ($file_out !== false) {
@@ -331,13 +363,14 @@ class ISO9660 {
 					hash_update ($hash, ($raw ? $data['sector'] : $data['data']));
 			}
 			if ($cb_progress !== false)
-				call_user_func ($cb_progress, $f_info['length'], $length);
+				call_user_func ($cb_progress, $f_info['length'], $pos + 1);
+
 		}
-		$r_info['length'] = $length; // Read length
-		if ($length != $f_info['length']) {
-			$r_info['error']['length'] = $f_info['length'];
+		$r_info['length'] = $size; // Read length
+		if (isset ($f_info['filesize']) and $size != $f_info['filesize']) {
+			$r_info['error']['length'] = $f_info['filesize'];
 			if ($cb_progress !== false)
-				call_user_func ($cb_progress, $length, $length); // Clear
+				call_user_func ($cb_progress, $pos + 1, $pos + 1); // Clear
 		}
 		if ($file_out !== false) {
 			fclose ($fh);
@@ -528,6 +561,8 @@ class ISO9660 {
 				if ($dr['file_id'] != "\x00" and $dr['file_id'] != "\x01") { // Check for . and .. records
 					if ($dr['file_flag']['directory'])
 						$dr['contents'] = $this->process_directory_record ($dr['ex_loc_be']);
+					else
+						$this->iso_file_map[$dr['ex_loc_be']] = $dr['file_id'];
 					$dir[] = $dr;
 				}
 				$data['data'] = substr ($data['data'], $dr['dr_len']);

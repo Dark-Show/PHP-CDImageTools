@@ -1,8 +1,8 @@
 #!/usr/bin/env php
 <?php
 
-// Title: Disc Image Tool
-// Description: Convert between or dump from a variety of disc image formats
+// Title: CD-ROM Image Dumper
+// Description: Dumps CD images to directories
 // Author: Greg Michalik
 
 include ('include/cdrom/cdemu.const.php');
@@ -36,7 +36,7 @@ function cli_process_argv ($argv) {
 	$hash_json = false;
 	echo ("Disc Image Tools v" . VERSION . "\n");
 	if (count ($argv) == 1)
-		cli_display_help ($name, $dir_out, false, $hash_algos, $e_format);
+		cli_print_help ($name, $dir_out, false, $hash_algos, $e_format);
 	for ($i = 1; $i < count ($argv); $i++) {
 		switch ($argv[$i]) {
 			case '-cdemu':
@@ -138,7 +138,7 @@ function cli_process_argv ($argv) {
 				$cli['verbose'] = true;
 				break;
 			case '-hashes':
-				cli_display_help (true, $hash_algos, $e_format);
+				cli_print_help (true, $hash_algos, $e_format);
 			case '-hash_set':
 				if (!isset ($argv[$i + 1]))
 					die ("Error: Missing output name\n");
@@ -146,7 +146,7 @@ function cli_process_argv ($argv) {
 				$i++;
 				break;
 			default:
-				cli_display_help (false, $hash_algos, $e_format);
+				cli_print_help (false, $hash_algos, $e_format);
 		}
 	}
 	if (!is_dir ($dir_out) and !mkdir ($dir_out, 0777, true))
@@ -318,12 +318,8 @@ function &dump_verify ($cdemu, $file) {
 		$d1 = $cdemu->read();
 		$d2 = $cdemu2->read();
 		cli_print_progress ($cdemu->get_length (true), $i + 1);
-		if ($d1['sector'] != $d2['sector']) {
-			//echo (bin2hex ($d1['sector']) . "\n");
-			//echo (bin2hex ($d2['sector']) . "\n");
-			//die();
+		if ($d1['sector'] != $d2['sector'])
 			$c_sect[$i] = $d1['sector'];
-		}
 	}
 	return ($c_sect);
 }
@@ -343,7 +339,6 @@ function dump_index ($file, $index, $hash_algos) {
 		foreach ($v1 as $i2)
 			$data .= "$i1 " . (is_array ($i2) ? implode (" ", $i2) : $i2) . "\n";
 	}
-	
 	if (($r_info = hash_write_file ($file, $data, $hash_algos)) === false)
 		die ("Error: Could not write file '$file'\n");
 	return ($r_info);
@@ -524,7 +519,7 @@ function dump_data ($cdemu, $dir_out, $track, $full_dump, $trim_filename, $cdda_
 					mkdir ($dir_out . $track_dir . "contents" . $c, 0777, true);
 				continue;
 			}
-			if (($f_info = $iso9660->find_file ($c, !$full_dump)) === false) {
+			if (($f_info = $iso9660->find_file ($c, $full_dump)) === false) {
 				echo ("    Error: File not found\n");
 				continue;
 			}
@@ -550,7 +545,8 @@ function dump_data ($cdemu, $dir_out, $track, $full_dump, $trim_filename, $cdda_
 				if ($xa_riff) {
 					$h_riff_fmt_id = "CDXA";
 					$h_riff_fmt = $f_info['record']['extension']['xa']['data'] . "\x00\x00";
-					$header = "RIFF" . pack ('V', $f_info['length'] + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $f_info['length']);
+					$iso9660->find_filesize ($f_info, 'cli_print_progress');
+					$header = "RIFF" . pack ('V', $f_info['filesize'] + 36) . $h_riff_fmt_id . "fmt " . pack ('V', strlen ($h_riff_fmt)) . $h_riff_fmt . "data" . pack ('V', $f_info['length']);
 				}
 			}
 			if ($full_dump) {
@@ -638,7 +634,7 @@ function cli_print_progress ($length, $pos) {
 		echo ("\r" . str_repeat (' ', strlen ($text)) . "\r");
 }
 
-function cli_display_help ($name, $dir_out, $hashes, $hash_algos, $e_format) {
+function cli_print_help ($name, $dir_out, $hashes, $hash_algos, $e_format) {
 	echo ("  Input options:\n");
 	echo ("    -cue \"FILE.CUE\"     Open CUE file\n");
 	echo ("    -iso \"FILE.ISO\"     Open ISO file\n");
