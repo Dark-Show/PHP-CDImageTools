@@ -339,7 +339,7 @@ class ISO9660 {
 			} else if (isset ($f_info['filesize']) and $f_info['filesize'] - $size < strlen ($data['data'])) {
 				$t_null = true;
 				if ($full_dump) { // Make sure data is null before we chop
-					for ($i = $f_info['filesize'] - $size; $i <= strlen ($data['data']) - 1; $i++) {
+					for ($i = $f_info['filesize'] - $size; $i < strlen ($data['data']); $i++) {
 						if ($data['data'][$i] != "\x00") {
 							$t_null = false;
 							break;

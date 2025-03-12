@@ -471,24 +471,24 @@ class CDEMU {
 		return ($sector_size);
 	}
 	
-	// Find stored sector size from CDEMU full dump data
+	// Find stored sector size from CDEMU data
 	private function cdemu_sector_size ($sector) {
 		if (!isset ($this->CD['cdemu']['sector'][$sector]))
 			return (2352); // Audio
-		else if ($this->CD['cdemu']['sector'][$sector]['mode'] == 0)
-			return (2336); // Mode 0
-		else if ($this->CD['cdemu']['sector'][$sector]['mode'] == 1)
-			return (2048); // Mode 1
 		else if (isset ($this->CD['cdemu']['sector'][$sector]['xa'])) {
 			if ($this->CD['cdemu']['sector'][$sector]['xa']['submode']['form'] == 1)
 				return (2048); // Mode 2 XA Form 1
 			else
 				return (2324); // Mode 2 XA Form 2
-		} else
+		} else if ($this->CD['cdemu']['sector'][$sector]['mode'] == 0)
+			return (2336); // Mode 0
+		else if ($this->CD['cdemu']['sector'][$sector]['mode'] == 1)
+			return (2048); // Mode 1
+		else
 			return (2336); // Mode 2 (Formless)
 	}
 	 
-	// Generate sectors from CDEMU full dump data
+	// Generate sectors from CDEMU data
 	private function &cdemu_gen_sector (&$data, $lba) {
 		if (!isset ($this->CD['cdemu']['sector'][$lba])) {
 			$data = $this->gen_sector_audio ($data); // Audio
@@ -502,16 +502,15 @@ class CDEMU {
 		else
 			$edc = isset ($this->CD['cdemu']['sector'][$lba]['edc']) ? $this->CD['cdemu']['sector'][$lba]['edc'] : false;
 		$ecc = isset ($this->CD['cdemu']['sector'][$lba]['ecc']) ? $this->CD['cdemu']['sector'][$lba]['ecc'] : false;
-		if ($this->CD['cdemu']['sector'][$lba]['mode'] == 0)
+		
+		if (isset ($this->CD['cdemu']['sector'][$lba]['xa']))
+			$data = $this->gen_sector_mode2xa ($data, $addr === false ? $lba : $addr, $xa, $mode, $edc, $ecc); // Mode 2 XA Form 1/2
+		else if ($this->CD['cdemu']['sector'][$lba]['mode'] == 0)
 			$data = $this->gen_sector_mode0 ($addr === false ? $lba : $addr, $mode); // Mode 0
-		else if ($this->CD['cdemu']['sector'][$lba]['mode'] == 1)
+		else if ($this->CD['cdemu']['sector'][$lba]['mode'] > 1)
+			$data = $this->gen_sector_mode2 ($data, $addr === false ? $lba : $addr, $mode); // Mode 2 (Formless)
+		else
 			$data = $this->gen_sector_mode1 ($data, $addr === false ? $lba : $addr, $mode, $edc, $ecc); // Mode 1
-		else if ($this->CD['cdemu']['sector'][$lba]['mode'] > 1) {
-			if (isset ($this->CD['cdemu']['sector'][$lba]['xa']))
-				$data = $this->gen_sector_mode2xa ($data, $addr === false ? $lba : $addr, $xa, $mode, $edc, $ecc); // Mode 2 XA Form 1/2
-			else
-				$data = $this->gen_sector_mode2 ($data, $addr === false ? $lba : $addr, $mode); // Mode 2 (Formless)
-		}
 		return ($data);
 	}
 	
@@ -554,10 +553,10 @@ class CDEMU {
 			$s['reserved'] = "\x00\x00\x00\x00\x00\x00\x00\x00";
 			$s['sector'] .= $s['edc'] . $s['reserved'];
 			if ($ecc === false)
-				$s['ecc'] = $this->ecc_compute ($s['sector']);
+				$s['ecc'] = $this->ecc_compute ($s['sector'], false);
 			else {
 				$s['ecc'] = $ecc;
-				$s['error']['ecc'] = $this->ecc_compute ($s['sector']);
+				$s['error']['ecc'] = $this->ecc_compute ($s['sector'], false);
 			}
 			$s['sector'] .= $s['ecc'];
 		} else {
@@ -566,11 +565,11 @@ class CDEMU {
 			$s['reserved'] = "\x00\x00\x00\x00\x00\x00\x00\x00";
 			if ($ecc === false) {
 				$s['sector'] .= $s['edc'] . $s['reserved'];
-				$s['ecc'] = $this->ecc_compute ($s['sector']);
+				$s['ecc'] = $this->ecc_compute ($s['sector'], false);
 				$s['sector'] .= $s['ecc'];
 			} else {
 				$s['ecc'] = $ecc;
-				$s['error']['ecc'] = $this->ecc_compute ($s['sector'] . $s['error']['edc'] . $s['reserved']);
+				$s['error']['ecc'] = $this->ecc_compute ($s['sector'] . $s['error']['edc'] . $s['reserved'], false);
 				$s['sector'] .= $s['edc'] . $s['reserved'] . $s['ecc'];
 			}
 		}
@@ -678,7 +677,7 @@ class CDEMU {
 				$s['data'] = substr ($sector, 16, 2048); // 2048b
 				$s['edc'] = substr ($sector, 2064, 4);
 				$s['ecc'] = substr ($sector, 2076, 276);
-				if (($ecc = $this->ecc_compute ($sector)) != $s['ecc'])
+				if (($ecc = $this->ecc_compute ($sector, false)) != $s['ecc'])
 					$s['error']['ecc'] = $ecc;
 				return ($s);
 			} else
@@ -746,7 +745,7 @@ class CDEMU {
 		$s['error']['edc'] = $m1_edc;
 		$s['reserved'] = substr ($sector, 2068, 8);
 		$s['ecc'] = substr ($sector, 2076, 276);
-		if (($ecc = $this->ecc_compute ($sector)) != $s['ecc'])
+		if (($ecc = $this->ecc_compute ($sector, false)) != $s['ecc'])
 			$s['error']['ecc'] = $ecc;
 		return ($s);
 	}
@@ -1051,9 +1050,9 @@ class CDEMU {
 
 	// Compute Error Correction Code
 	// Ported From: ECM Tools (Neill Corlett)
-	private function &ecc_compute ($sector) {
-		$this->circ_compute ($sector, 86, 24, 2, 86, 0);
-		$this->circ_compute ($sector, 52, 43, 86, 88, 172);
+	private function &ecc_compute ($sector, $xa = true) {
+		$this->circ_compute ($sector, $xa, 86, 24, 2, 86, 0);
+		$this->circ_compute ($sector, $xa, 52, 43, 86, 88, 172);
 		$out = substr ($sector, 2076, 276);
 		return ($out);
 	}
@@ -1061,14 +1060,14 @@ class CDEMU {
 	// Compute Cross Interleave Reed-Solomon Code
 	// Ported From: ECM Tools (Neill Corlett)
 	// Note: Modifies $sector
-	private function circ_compute (&$sector, $major_count, $minor_count, $major_mult, $minor_inc, $pos) {
+	private function circ_compute (&$sector, $xa, $major_count, $minor_count, $major_mult, $minor_inc, $pos) {
 		$size = $major_count * $minor_count;
 		for ($major = 0; $major < $major_count; $major++) {
 			$index = ($major >> 1) * $major_mult + ($major & 1);
 			$ecc_a = 0;
 			$ecc_b = 0;
 			for ($minor = 0; $minor < $minor_count; $minor++) {
-				if ($index < 4 and ord ($sector[0x0F]) == 2)
+				if ($xa and $index < 4 and ord ($sector[0x0F]) == 2)
 					$data = 0x00;
 				else
 					$data = ord ($sector[0x0C + $index]);
