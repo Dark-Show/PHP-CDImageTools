@@ -860,10 +860,10 @@ class CDEMU {
 			$cb_progress = false;
 		$r_info = array();
 		$r_info['length'] = 0;
-		if ($file === false) {
-			$r_info['file'] = $file;
+		if ($file === false)
 			$r_info['data'] = '';
-		}
+		else
+			$r_info['file'] = $file;
 		if ($hash_algos !== false) {
 			foreach ($hash_algos as $algo)
 				$r_info['hash'][$algo] = hash_init ($algo); // Init hash

@@ -19,6 +19,71 @@ $cli = array ('verbose' => false);
 
 cli_process_argv ($argv);
 
+function cli_print_help ($dir_out, $hashes, $hash_algos, $e_format) {
+	echo ("  Input options:\n");
+	echo ("    -cue \"FILE.CUE\"     Open CUE file\n");
+	echo ("    -iso \"FILE.ISO\"     Open ISO file\n");
+	echo ("    -bin \"FILE.BIN\"     Open BIN file\n");
+	echo ("    -cdemu \"FILE.CDEMU\" Open CDEMU file\n\n");
+	echo ("  Output options:\n");
+	echo ("    -dir \"PATH\"         Output directory [$dir_out]\n");
+	echo ("    -export \"FORMAT\"    Export image as selected format\n");
+	echo ("    -dump               Dump image contents to local files [default]\n\n");
+	echo ("  General options:\n");
+	echo ("    -ram                Load all read sectors into ram to increase access speeds\n");
+	echo ("    -verbose            Show more information\n\n");
+	echo ("  Hashing options:\n");
+	echo ("    -hashes             Display supported hash algorithms\n");
+	echo ("    -hash_set \"A1|A2\"   Set hashing algorithms");
+	if (count ($hash_algos) > 0) {
+		echo (" [");
+		for ($i = 0; $i < count ($hash_algos); $i++)
+			echo ($hash_algos[$i] . ($i + 1 < count ($hash_algos) ? ', ' : ''));
+		echo ("]\n");
+	}
+	echo ("    -hash               Enable hashing\n");
+	echo ("    -hash_json          Save hashing information to file \"hash.json\"\n\n");
+	echo ("  Dump options:\n");
+	echo ("    -trim_overlap       Trim any overlap with filesystem or other files\n");
+	echo ("    -trim_name          Trim version information from ISO9660 filenames\n");
+	echo ("    -link               Create symbolic links for XA-CDDA files\n");
+	echo ("    -riff               Dump XA interleaved files to RIFF-CDXA\n\n");
+	echo ("  Export options:\n");
+	echo ("    -name \"NAME\"        Set output filename without extension [Input filename]\n");
+	echo ("    -cue_track          Export BIN file per track\n\n");
+	echo ("  Export Formats:\n");
+	echo ("    ID     NAME:\n");
+	foreach ($e_format as $i => $name)
+		echo ("     $i      $name\n");
+	if ($hashes) {
+		echo ("\n");
+		echo ("  Hash Algorithms:\n");
+		foreach (hash_algos() as $hash)
+			echo ("    $hash\n");
+	}
+	echo ("\n");
+	die();
+}
+
+function cli_print_info ($r_info, $pre = '      ') {
+	global $cli;
+	if (!$cli['verbose'] or !is_array ($r_info))
+		return;
+	echo ($pre . "Length: " . $r_info['length'] . "\n");
+	if (isset ($r_info['hash'])) {
+		foreach ($r_info['hash'] as $algo => $res)
+			echo ("$pre$algo: $res\n");
+	}
+}
+
+function cli_print_progress ($length, $pos) {
+	global $cli;
+	$p = $length > 0 ? $pos / $length * 100 : 0;
+	echo ($text = "\r" . (isset ($cli['progress']) ? $cli['progress'] : '') . "$pos / $length = " . (int)$p . "%");
+	if ($p == 100)
+		echo ("\r" . str_repeat (' ', strlen ($text)) . "\r");
+}
+
 function cli_process_argv ($argv) {
 	global $cli;
 	$hash_algos = ['crc32b', 'md5', 'sha1', 'sha256'];
@@ -37,7 +102,7 @@ function cli_process_argv ($argv) {
 	$trim_overlap = false;
 	echo ("Disc Image Tools v" . VERSION . "\n");
 	if (count ($argv) == 1)
-		cli_print_help ($name, $dir_out, false, $hash_algos, $e_format);
+		cli_print_help ($dir_out, false, $hash_algos, $e_format);
 	for ($i = 1; $i < count ($argv); $i++) {
 		switch ($argv[$i]) {
 			case '-cdemu':
@@ -142,7 +207,7 @@ function cli_process_argv ($argv) {
 				$cli['verbose'] = true;
 				break;
 			case '-hashes':
-				cli_print_help (true, $hash_algos, $e_format);
+				cli_print_help ($dir_out, true, $hash_algos, $e_format);
 			case '-hash_set':
 				if (!isset ($argv[$i + 1]))
 					die ("Error: Missing output name\n");
@@ -150,11 +215,9 @@ function cli_process_argv ($argv) {
 				$i++;
 				break;
 			default:
-				cli_print_help (false, $hash_algos, $e_format);
+				cli_print_help ($dir_out, false, $hash_algos, $e_format);
 		}
 	}
-	if (!is_dir ($dir_out) and !mkdir ($dir_out, 0777, true))
-		die ("Error: Could not create directory '$dir_out'\n");
 	if ($name == false) {
 		if (isset ($index))
 			$name = basename ($index);
@@ -194,6 +257,8 @@ function cli_process_argv ($argv) {
 	}
 	if ($cdemu->get_length (true) == 0)
 		die ("Error: No image loaded\n");
+	if (!is_dir ($dir_out) and !mkdir ($dir_out, 0777, true))
+		die ("Error: Could not create directory '$dir_out'\n");
 	
 	if ($mode == MODE_DUMP) {
 		$cli['progress'] = " Dumping: ";
@@ -279,7 +344,7 @@ function dump_image ($cdemu, $dir_out, $full_dump, $full_name, $filename_trim, $
 			if ($cdemu->save_track ($file_out, false, false, 'cli_print_progress') === false)
 				return (false);
 			$info = $r_info['track'][$track];
-			$info['file'] = $dir_out . $file_out;
+			$info['file'] = $file_out;
 			$r_info['files'][] = $info;
 		} else { // Dump Data Track
 			$info = dump_data ($cdemu, $dir_out, $track, $full_dump, $filename_trim, $trim_overlap, $cdda_symlink, $xa_riff, $hash_algos);
@@ -577,6 +642,7 @@ function dump_data ($cdemu, $dir_out, $track, $full_dump, $trim_filename, $trim_
 			$file_out = "LBA" . str_pad ($sector, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
 			echo ("    $file_out\n");
 			$info = $cdemu->save_sector ($dir_out . ($full_dump ? '' : $track_dir) . $file_out, $sector, $length, false, $hash_algos, 'cli_print_progress');
+			//$info['file'] = ($full_dump ? '' : $track_dir) . $file_out;
 			$r_info['files'][] = $info;
 			cli_print_info ($info);
 		}
@@ -587,7 +653,8 @@ function dump_data ($cdemu, $dir_out, $track, $full_dump, $trim_filename, $trim_
 			$r_info['index']['LBA'][] = str_pad ($sector, strlen ($cdemu->get_length (true)), '0', STR_PAD_LEFT);
 		$file_out = "LBA" . str_pad ($sector, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
 		echo ("    $file_out\n");
-		$info = $cdemu->save_sector ($dir_out . ($full_dump ? '' : $track_dir). $file_out, $sector, $length, false, $hash_algos, 'cli_print_progress');
+		$info = $cdemu->save_sector ($dir_out . ($full_dump ? '' : $track_dir) . $file_out, $sector, $length, false, $hash_algos, 'cli_print_progress');
+		//$info['file'] = ($full_dump ? '' : $track_dir) . $file_out;
 		$r_info['files'][] = $info;
 		cli_print_info ($info);
 	}
@@ -617,71 +684,6 @@ function symlink_relative_path ($target, $link) {
 			$r_target .= '/';
 	}
 	return ($r_target);
-}
-
-function cli_print_info ($r_info, $pre = '      ') {
-	global $cli;
-	if (!$cli['verbose'] or !is_array ($r_info))
-		return;
-	echo ($pre . "Length: " . $r_info['length'] . "\n");
-	if (isset ($r_info['hash'])) {
-		foreach ($r_info['hash'] as $algo => $res)
-			echo ("$pre$algo: $res\n");
-	}
-}
-
-function cli_print_progress ($length, $pos) {
-	global $cli;
-	$p = $length > 0 ? $pos / $length * 100 : 0;
-	echo ($text = "\r" . (isset ($cli['progress']) ? $cli['progress'] : '') . "$pos / $length = " . (int)$p . "%");
-	if ($p == 100)
-		echo ("\r" . str_repeat (' ', strlen ($text)) . "\r");
-}
-
-function cli_print_help ($name, $dir_out, $hashes, $hash_algos, $e_format) {
-	echo ("  Input options:\n");
-	echo ("    -cue \"FILE.CUE\"     Open CUE file\n");
-	echo ("    -iso \"FILE.ISO\"     Open ISO file\n");
-	echo ("    -bin \"FILE.BIN\"     Open BIN file\n");
-	echo ("    -cdemu \"FILE.CDEMU\" Open CDEMU file\n\n");
-	echo ("  Output options:\n");
-	echo ("    -dir \"PATH\"         Output directory [$dir_out]\n");
-	echo ("    -export \"FORMAT\"    Export image as selected format\n");
-	echo ("    -dump               Dump image contents to local files [default]\n\n");
-	echo ("  General options:\n");
-	echo ("    -ram                Load all read sectors into ram to increase access speeds\n");
-	echo ("    -verbose            Show more information\n\n");
-	echo ("  Hashing options:\n");
-	echo ("    -hashes             Display supported hash algorithms\n");
-	echo ("    -hash_set \"A1|A2\"   Set hashing algorithms");
-	if (count ($hash_algos) > 0) {
-		echo (" [");
-		for ($i = 0; $i < count ($hash_algos); $i++)
-			echo ($hash_algos[$i] . ($i + 1 < count ($hash_algos) ? ', ' : ''));
-		echo ("]\n");
-	}
-	echo ("    -hash               Enable hashing\n");
-	echo ("    -hash_json          Save hashing information to file \"hash.json\"\n\n");
-	echo ("  Dump options:\n");
-	echo ("    -trim_overlap       Trim any overlap with filesystem or other files\n");
-	echo ("    -trim_name          Trim version information from ISO9660 filenames\n");
-	echo ("    -link               Create symbolic links for XA-CDDA files\n");
-	echo ("    -riff               Dump XA interleaved files to RIFF-CDXA\n\n");
-	echo ("  Export options:\n");
-	echo ("    -name \"NAME\"        Set output filename without extension [Input filename]\n");
-	echo ("    -cue_track          Export BIN file per track\n\n");
-	echo ("  Export Formats:\n");
-	echo ("    ID     NAME:\n");
-	foreach ($e_format as $i => $name)
-		echo ("     $i      $name\n");
-	if ($hashes) {
-		echo ("\n");
-		echo ("  Hash Algorithms:\n");
-		foreach (hash_algos() as $hash)
-			echo ("    $hash\n");
-	}
-	echo ("\n");
-	die();
 }
 
 ?>
