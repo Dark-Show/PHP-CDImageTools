@@ -267,12 +267,13 @@ function cli_process_argv ($argv) {
 		switch ($format) {
 			case 0: // CDEMU
 				$cli['progress'] = " Exporting CDEMU: ";
-				$r_info = dump_image ($cdemu, $dir_out, true, $name, false, false, false, false, $hash ? $hash_algos : false);
+				if (($r_info = dump_image ($cdemu, $dir_out, true, $name, false, false, false, false, $hash ? $hash_algos : false)) === false)
+					die ("Error: Export failed\n");
 				break;
 			case 1: // CUE
 				$cli['progress'] = " Exporting CUE: ";
 				if (($r_info = $cdemu->save_cue ($dir_out, $name, $cue_track, $hash ? $hash_algos : false, 'cli_print_progress')) === false)
-					die ("Error: Export of CUE failed");
+					die ("Error: Export failed\n");
 				foreach ($r_info as $info) {
 					echo ("  " . basename ($info['file']) . "\n");
 					cli_print_info ($info, '    ');
@@ -290,11 +291,11 @@ function cli_process_argv ($argv) {
 						echo (" Warning: ISO does not support CD-XA, data loss will occur\n");
 				}
 				unset ($iso9660);
-				// TODO: Check for Mode2 sectors and warm
+				// TODO: Check for Mode2 sectors and warn
 				$cli['progress'] = " Exporting ISO: ";
 				echo ("  $name.iso\n");
 				if (($r_info = $cdemu->save_iso ($dir_out . $name . ".iso", $hash ? $hash_algos : false, 'cli_print_progress')) === false)
-					die ("Error: Export of ISO failed");
+					die ("Error: Export failed\n");
 				else if (is_array ($r_info) and isset ($r_info['hash']))
 					cli_print_info ($r_info, '    ');
 				break;
@@ -422,13 +423,12 @@ function &dump_analytics ($cdemu, $dir_out, &$r_info, $hash_algos) {
 	$CD = $cdemu->get_layout();
 	// TODO: Support session listings (requires CDEMU support)
 	// TODO: Support subchannel data (requires CDEMU support)
+	// TODO: Determine media type support (CD/Other)
 	foreach ($CD['track'] as $track => $t) {
 		foreach ($t['index'] as $ii => $vv)
 			$t['index'][$ii] = str_pad ($vv, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT);
 		$ret_info['index']['TRACK'][] = [str_pad ($track, 2, "0", STR_PAD_LEFT), ($t['format'] == CDEMU_TRACK_AUDIO ? "AUDIO" : "DATA"), implode (" ", $t['index'])]; // Track/index listings
 	}
-	if (isset ($r_info['analytics']['form2edc']))
-		$ret_info['index']['F2EDC'] = $r_info['analytics']['form2edc'] ? 1 : 0;
 	if (isset ($r_info['analytics']['mode'])) {
 		$mode = false;
 		$lba = false;
@@ -455,15 +455,24 @@ function &dump_analytics ($cdemu, $dir_out, &$r_info, $hash_algos) {
 		foreach ($info['files'] as $f)
 			$ret_info['files'][] = $f;
 	}
+	if (isset ($r_info['analytics']['xa'])) {
+		$last = array_key_last ($r_info['analytics']['xa']);
+		$dump = '';
+		for ($i = 0; $i <= $last; $i++) {
+			if (isset ($r_info['analytics']['xa'][$i]))
+				$dump .= "\x01" . $r_info['analytics']['xa'][$i];
+			else
+				$dump .= "\x00\x00\x00\x00\x00";
+		}
+		$info = hash_write_file ($dir_out . "CDXA.bin", $dump, $hash_algos);
+		$ret_info['index']['CDXA'] = 1;
+		$ret_info['files'][] = $info;
+	}
+	if (isset ($r_info['analytics']['form2edc']))
+		$ret_info['index']['F2EDC'] = $r_info['analytics']['form2edc'] ? 1 : 0;
 	if (isset ($r_info['analytics']['address'])) {
 		$info = dump_analytics_condensed ($cdemu, $r_info['analytics']['address'], "CDADDR", ".bin", $dir_out, $hash_algos); // Dump invalid header addresses
 		$ret_info['index']['CDADDR'] = $info['index'];
-		foreach ($info['files'] as $f)
-			$ret_info['files'][] = $f;
-	}
-	if (isset ($r_info['analytics']['xa'])) {
-		$info = dump_analytics_condensed ($cdemu, $r_info['analytics']['xa'], "CDXA", ".bin", $dir_out, $hash_algos); // Dump XA errors
-		$ret_info['index']['CDXA'] = $info['index'];
 		foreach ($info['files'] as $f)
 			$ret_info['files'][] = $f;
 	}

@@ -294,6 +294,15 @@ class CDEMU {
 						$this->CD['cdemu']['sector'][$lba + $j]['address'] = $data[$j];
 					break;
 				case 'cdxa':
+					if (trim ($i[1]) == "1" and !is_file ($path . "CDXA" . trim ($i[1]) . ".bin")) {
+						$data = file_get_contents ($path . "CDXA.bin");
+						for ($j = 0; $j < strlen ($data); $j += 5) {
+							if ($data[$j] == "\x01")
+								$this->CD['cdemu']['sector'][$j / 5]['xa'] = $this->parse_xa (substr ($data, $j + 1, 4));
+						}
+						break;
+					}
+					// DEPRECATED: Old CDXA format
 					$data = file_get_contents ($path . "CDXA" . trim ($i[1]) . ".bin");
 					$lba = (int)trim ($i[1]);
 					for ($j = 0; $j < strlen ($data); $j += 4)
@@ -397,12 +406,13 @@ class CDEMU {
 				$data = fread ($this->fh, $sector_size); // Read sector
 				if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_CDEMU) {
 					$this->buffer[$i] = $this->cdemu_gen_sector ($data, $i); // Generate sector from CDEMU data
+					$this->buffer[$i] = $this->read_bin_sector ($this->buffer[$i]); // Parse generated sector
 					continue;
 				}
 				if (strlen ($data) < $sector_size)
 					break;
 				if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_BIN)
-					$this->buffer[$i] = $this->read_bin_sector ($data); // Process BIN data into sector
+					$this->buffer[$i] = $this->read_bin_sector ($data); // Parse sector
 				else if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_ISO)
 					$this->buffer[$i] = $this->gen_sector_mode1 ($data, $i); // Generate Mode 1 sector from ISO data
 				else
@@ -502,7 +512,6 @@ class CDEMU {
 		else
 			$edc = isset ($this->CD['cdemu']['sector'][$lba]['edc']) ? $this->CD['cdemu']['sector'][$lba]['edc'] : false;
 		$ecc = isset ($this->CD['cdemu']['sector'][$lba]['ecc']) ? $this->CD['cdemu']['sector'][$lba]['ecc'] : false;
-		
 		if (isset ($this->CD['cdemu']['sector'][$lba]['xa']))
 			$data = $this->gen_sector_mode2xa ($data, $addr === false ? $lba : $addr, $xa, $mode, $edc, $ecc); // Mode 2 XA Form 1/2
 		else if ($this->CD['cdemu']['sector'][$lba]['mode'] == 0)
@@ -517,23 +526,17 @@ class CDEMU {
 	// Generate Audio sector
 	private function &gen_sector_audio (&$data) {
 		if (strlen ($data) > 2352)
-			$data = substr ($data, 0, 2352); // Clip
-		$s = array();
-		$s['sector'] = str_pad ($data, 2352, "\x00");
-		$s['type'] = CDEMU_SECT_AUDIO;
-		$s['data'] = $s['sector'];
+			$s = substr ($data, 0, 2352); // Clip
+		else if (strlen ($data) < 2352)
+			$s = str_pad ($data, 2352, "\x00"); // Pad
+		else
+			return ($data);
 		return ($s);
 	}
 	
 	// Generate Mode 0 sector
 	private function &gen_sector_mode0 ($lba, $mode = false) {
-		$s = array();
-		$s['sync'] = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
-		$s['address'] = $this->lba2header ($lba);
-		$s['mode'] = $mode === false ? 0 : $mode;
-		$s['type'] = CDEMU_SECT_MODE0;
-		$s['data'] = str_repeat ("\x00", 2336);
-		$s['sector'] = $s['sync'] . $this->lba2header ($lba) . chr ($s['mode']) . $s['data'];
+		$s = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00" . $this->lba2header ($lba) . chr ($mode === false ? 0 : $mode) . str_repeat ("\x00", 2336);
 		return ($s);
 	}
 	
@@ -541,38 +544,16 @@ class CDEMU {
 	private function &gen_sector_mode1 (&$data, $lba, $mode = false, $edc = false, $ecc = false) {
 		if (strlen ($data) > 2048)
 			$data = substr ($data, 0, 2048); // Clip
-		$s = array();
-		$s['sync'] = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
-		$s['address'] = $this->lba2header ($lba);
-		$s['mode'] = $mode === false ? 1 : $mode;
-		$s['type'] = CDEMU_SECT_MODE1;
-		$s['data'] = str_pad ($data, 2048, "\x00");
-		$s['sector'] = $s['sync'] . $this->lba2header ($lba) . chr ($s['mode']) . $s['data'];
-		if ($edc === false) {
-			$s['edc'] = $this->edc_compute ($s['sector'], 0, 2064);
-			$s['reserved'] = "\x00\x00\x00\x00\x00\x00\x00\x00";
-			$s['sector'] .= $s['edc'] . $s['reserved'];
-			if ($ecc === false)
-				$s['ecc'] = $this->ecc_compute ($s['sector'], false);
-			else {
-				$s['ecc'] = $ecc;
-				$s['error']['ecc'] = $this->ecc_compute ($s['sector'], false);
-			}
-			$s['sector'] .= $s['ecc'];
-		} else {
-			$s['edc'] = $edc;
-			$s['error']['edc'] = $this->edc_compute ($s['sector'], 0, 2064);
-			$s['reserved'] = "\x00\x00\x00\x00\x00\x00\x00\x00";
-			if ($ecc === false) {
-				$s['sector'] .= $s['edc'] . $s['reserved'];
-				$s['ecc'] = $this->ecc_compute ($s['sector'], false);
-				$s['sector'] .= $s['ecc'];
-			} else {
-				$s['ecc'] = $ecc;
-				$s['error']['ecc'] = $this->ecc_compute ($s['sector'] . $s['error']['edc'] . $s['reserved'], false);
-				$s['sector'] .= $s['edc'] . $s['reserved'] . $s['ecc'];
-			}
-		}
+		else if (strlen ($data) < 2048)
+			$data = str_pad ($data, 2048, "\x00"); // Pad
+
+		$s = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
+		$s .= $this->lba2header ($lba);
+		$s .= chr ($mode === false ? 1 : $mode);
+		$s .= $data;
+		$s .= $edc === false ? $this->edc_compute ($s['sector'], 0, 2064) : $edc;
+		$s .= "\x00\x00\x00\x00\x00\x00\x00\x00";
+		$s .= $ecc === false ? $this->ecc_compute ($s, false) : $ecc;
 		return ($s);
 	}
 	
@@ -580,68 +561,32 @@ class CDEMU {
 	private function &gen_sector_mode2 (&$data, $lba, $mode = false) {
 		if (strlen ($data) > 2336)
 			$data = substr ($data, 0, 2336); // Clip
-		$s = array();
-		$s['sync'] = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
-		$s['address'] = $this->lba2header ($lba);
-		$s['mode'] = $mode === false ? 0 : $mode;
-		$s['type'] = CDEMU_SECT_MODE2;
-		$s['data'] = str_pad ($data, 2336, "\x00");
-		$s['sector'] = $s['sync'] . $this->lba2header ($lba) . chr ($s['mode']) . $s['data'];
+		else if (strlen ($data) < 2336)
+			$data = str_pad ($data, 2336, "\x00"); // Pad
+		
+		$s = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00" . $this->lba2header ($lba) . chr ($mode === false ? 0 : $mode) . $data;
 		return ($s);
 	}
 	
 	// Generate Mode 2 XA Form 1/2 sector
 	private function &gen_sector_mode2xa (&$data, $lba, $xa, $mode = false, $edc = false, $ecc = false) {
-		if ($this->CD['cdemu']['sector'][$lba]['xa']['submode']['form'] == 1) {
+		if ($xa['submode']['form'] == 1) {
 			if (strlen ($data) > 2048)
 				$data = substr ($data, 0, 2048); // Clip
+			else if (strlen ($data) < 2048)
+				$data = str_pad ($data, 2048, "\x00"); // Pad
 		} else {
 			if (strlen ($data) > 2324)
 				$data = substr ($data, 0, 2324); // Clip
+			else if (strlen ($data) < 2324)
+				$data = str_pad ($data, 2324, "\x00"); // Pad
 		}
-		$s = array();
-		$s['sync'] = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
-		$s['address'] = $this->lba2header ($lba);
-		$s['mode'] = $mode === false ? 2 : $mode;
-		$s['subheader'] = $xa['raw'] . $xa['raw'];
-		$s['xa'] = $xa;
-		$s['type'] = $this->CD['cdemu']['sector'][$lba]['xa']['submode']['form'] == 1 ? CDEMU_SECT_MODE2FORM1 : CDEMU_SECT_MODE2FORM2;
-		$s['data'] = str_pad ($data, $this->CD['cdemu']['sector'][$lba]['xa']['submode']['form'] == 1 ? 2048 : 2324, "\x00");
-		$s['sector'] = $s['sync'] . $s['address'] . chr ($s['mode']) . $s['subheader'] . $s['data'];
+		$s = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00" . $this->lba2header ($lba) . chr ($mode === false ? 2 : $mode) . $xa['raw'] . $xa['raw'] . $data;
 		if ($xa['submode']['form'] == 1) { // Form 1
-			if ($edc === false) {
-				$s['edc'] = $this->edc_compute ($s['sector'], 16, 2056);
-				$s['sector'] .= $s['edc'];
-				if ($ecc === false)
-					$s['ecc'] = $this->ecc_compute ($s['sector']);
-				else {
-					$s['ecc'] = $ecc;
-					$s['error']['ecc'] = $this->ecc_compute ($s['sector']);
-				}
-				$s['sector'] .= $s['ecc'];
-			} else {
-				$s['edc'] = $edc;
-				$s['error']['edc'] = $this->edc_compute ($s['sector'], 16, 2056);
-				if ($ecc === false) {
-					$s['sector'] .= $s['edc'];
-					$s['ecc'] = $this->ecc_compute ($s['sector']);
-					$s['sector'] .= $s['ecc'];
-				} else {
-					$s['ecc'] = $ecc;
-					$s['error']['ecc'] = $this->ecc_compute ($s['sector'] . $s['error']['edc']);
-					$s['sector'] .= $s['edc'] . $s['ecc'];
-				}
-			}
-		} else { // Form 2
-			if ($edc === false) {
-				$s['edc'] = $this->edc_compute ($s['sector'], 16, 2332);
-				$s['sector'] .= $s['edc'];
-			} else {
-				$s['edc'] = $edc;
-				$s['error']['edc'] = $this->edc_compute ($s['sector'], 16, 2332);
-				$s['sector'] .= $s['edc'];
-			}
-		}
+			$s .= $edc === false ? $this->edc_compute ($s, 16, 2056) : $edc;
+			$s .= $ecc === false ? $this->ecc_compute ($s) : $ecc;
+		} else // Form 2
+			$s .= $edc === false ? $this->edc_compute ($s, 16, 2332) : $edc;
 		return ($s);
 	}
 	
@@ -667,21 +612,6 @@ class CDEMU {
 			$s['type'] = CDEMU_SECT_MODE0;
 			$s['data'] = substr ($sector, 16, 2336); // 2336b (Zeroes)
 			return ($s);
-		}
-	
-		// Mode 1
-		$m1_edc = $this->edc_compute ($sector, 0, 2064); // Header + Data
-		if (substr ($sector, 2064, 4) == $m1_edc) { // EDC Mode 1 Test
-			if (($s['reserved'] = substr ($sector, 2068, 8)) == "\x00\x00\x00\x00\x00\x00\x00\x00") {
-				$s['type'] = CDEMU_SECT_MODE1;
-				$s['data'] = substr ($sector, 16, 2048); // 2048b
-				$s['edc'] = substr ($sector, 2064, 4);
-				$s['ecc'] = substr ($sector, 2076, 276);
-				if (($ecc = $this->ecc_compute ($sector, false)) != $s['ecc'])
-					$s['error']['ecc'] = $ecc;
-				return ($s);
-			} else
-				unset ($s['reserved']);
 		}
 		
 		// Mode 2 XA
@@ -711,7 +641,7 @@ class CDEMU {
 			}
 			
 			// Trust XA Form
-			if ($s['xa']['submode']['form'] == 1) { // Mode 2 XA Form 1
+			if ($s['mode'] == 2 and $s['xa']['submode']['form'] == 1) { // Mode 2 XA Form 1
 				$s['type'] = CDEMU_SECT_MODE2FORM1;
 				$s['data'] = substr ($sector, 24, 2048); // 2048b
 				$s['edc'] = substr ($sector, 2072, 4);
@@ -721,7 +651,7 @@ class CDEMU {
 				if (($ecc = $this->ecc_compute ($sector)) != $s['ecc'])
 					$s['error']['ecc'] = $ecc;
 				return ($s);
-			} else if ($s['xa']['submode']['form'] == 2) { // Mode 2 XA Form 2
+			} else if ($s['mode'] == 2 and $s['xa']['submode']['form'] == 2) { // Mode 2 XA Form 2
 				$s['type'] = CDEMU_SECT_MODE2FORM2;
 				$s['data'] = substr ($sector, 24, 2324); // 2324b
 				$s['edc'] = substr ($sector, 2348, 4);
@@ -729,6 +659,21 @@ class CDEMU {
 					$s['error']['edc'] = $m2xa2_edc;
 				return ($s);
 			}
+		}
+		
+		// Mode 1
+		$m1_edc = $this->edc_compute ($sector, 0, 2064); // Header + Data
+		if (substr ($sector, 2064, 4) == $m1_edc) { // EDC Mode 1 Test
+			if (($s['reserved'] = substr ($sector, 2068, 8)) == "\x00\x00\x00\x00\x00\x00\x00\x00") {
+				$s['type'] = CDEMU_SECT_MODE1;
+				$s['data'] = substr ($sector, 16, 2048); // 2048b
+				$s['edc'] = substr ($sector, 2064, 4);
+				$s['ecc'] = substr ($sector, 2076, 276);
+				if (($ecc = $this->ecc_compute ($sector, false)) != $s['ecc'])
+					$s['error']['ecc'] = $ecc;
+				return ($s);
+			} else
+				unset ($s['reserved']);
 		}
 		
 		// Trust mode for formless mode 2 detection
