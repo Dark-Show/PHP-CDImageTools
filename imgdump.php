@@ -15,7 +15,7 @@ const VERSION = '0.1';
 // Application modes
 const MODE_DUMP = 0;
 const MODE_EXPORT = 1;
-$cli = array ('verbose' => false);
+$cli = array ('verbose' => false); // CLI output settings (Global)
 
 cli_process_argv ($argv);
 
@@ -387,7 +387,7 @@ function &dump_verify ($cdemu, $file) {
 	for ($i = 0; $i < $cdemu->get_length (true); $i++) {
 		$d1 = $cdemu->read();
 		$d2 = $cdemu2->read();
-		cli_print_progress ($cdemu->get_length (true), $i + 1);
+		cli_print_progress ($cdemu->get_length (true) - 1, $i);
 		if ($d1['sector'] != $d2['sector'])
 			$c_sect[$i] = $d1['sector'];
 	}
@@ -423,7 +423,7 @@ function &dump_analytics ($cdemu, $dir_out, &$r_info, $hash_algos) {
 	$CD = $cdemu->get_layout();
 	// TODO: Support session listings (requires CDEMU support)
 	// TODO: Support subchannel data (requires CDEMU support)
-	// TODO: Determine media type support (CD/Other)
+	// TODO: Determine media type support (CD/Other) (Highest known length: 601425)
 	foreach ($CD['track'] as $track => $t) {
 		foreach ($t['index'] as $ii => $vv)
 			$t['index'][$ii] = str_pad ($vv, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT);
@@ -543,7 +543,11 @@ function dump_filesystem ($cdemu, $iso9660, $dir_out, $file_prefix, $file_postfi
 	$out = '';
 	$k_last = array_key_last ($map) + 1;
 	for ($i = array_key_first ($map); $i <= $k_last; $i++) {
-		if (!isset ($map[$i])) {
+		if (!isset ($map[$i]) or ($d = (isset ($map[$i + 1]) and $map[$i + 1] != $map[$i]))) {
+			if ($d) {
+				$data = $cdemu->read ($i);
+				$out .= $data['data'];
+			}
 			if (strlen ($out) > 0) {
 				$r_info['index'][] = str_pad ($p_out, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT);
 				$file_out = $file_prefix . str_pad ($p_out, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . $file_postfix;
@@ -574,7 +578,8 @@ function dump_data ($cdemu, $dir_out, $track, $full_dump, $trim_filename, $trim_
 	$track_dir = "Track " . str_pad ($track, 2, '0', STR_PAD_LEFT) . "/";
 	if (!$full_dump and !is_dir ($dir_out . $track_dir))
 		mkdir ($dir_out . $track_dir, 0777, true);
-	if ($iso9660->init ($cdemu->get_track_start (true))) { // Process ISO9660 filesystem
+	$iso9660_lba = $cdemu->get_track_start (true);
+	if ($iso9660->init ($iso9660_lba)) { // Process ISO9660 filesystem
 		if (!$full_dump and !is_dir ($dir_out . $track_dir . "contents"))
 			mkdir ($dir_out . $track_dir . "contents", 0777, true);
 		
@@ -597,8 +602,9 @@ function dump_data ($cdemu, $dir_out, $track, $full_dump, $trim_filename, $trim_
 					mkdir ($dir_out . $track_dir . "contents" . $c, 0777, true);
 				continue;
 			}
-			if (($f_info = $iso9660->find_file ($c, $trim_overlap or $full_dump)) === false) {
-				echo ("    Error: File not found\n");
+			if (!is_array ($f_info = $iso9660->find_file ($c, $trim_overlap or $full_dump))) {
+				if ($f_info === false)
+					echo ("    Error: File not found\n");
 				continue;
 			}
 			$raw = false;

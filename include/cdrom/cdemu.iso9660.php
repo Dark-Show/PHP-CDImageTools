@@ -45,6 +45,8 @@ class ISO9660 {
 		$this->iso_dr = array();
 		$this->iso_ext = array();
 		$this->iso_map = array();
+		for ($i = 0; $i < 16; $i++)
+			$this->iso_map[$lba + $i] = ISO9660_MAP_SYSTEM_USE;
 		$this->iso_file_map = array();
 		if ($this->process_volume_descriptor() === false)
 			return (false);
@@ -255,13 +257,24 @@ class ISO9660 {
 		} else
 			$f_info['filesize'] = $file['data_len_be']; // Length (Bytes)
 		
+		$skip = false;
 		if ($trim_overlap) {
 			// Check for filesystem overlap
 			foreach ($this->iso_map as $lba => $v) {
-				if ($f_info['lba'] < $lba and $f_info['lba'] + $f_info['length'] - 1 >= $lba) {
+				if ($f_info['lba'] < $lba and $f_info['lba'] + $f_info['length'] - 1 >= $lba) { // Overlap into filesystem
 					if (isset ($f_info['filesize']))
 						unset ($f_info['filesize']);
 					$f_info['length'] = $lba - $f_info['lba'];
+				} else if ($f_info['lba'] == $lba) { // Beginning inside of filesystem
+					if (isset ($f_info['filesize']))
+						unset ($f_info['filesize']);
+					for ($i = 1; isset ($this->iso_map[$lba + $i]); $i++); // Find next available data sector
+					$f_info['lba'] = $lba + $i;
+					$f_info['length'] -= $i;
+				}
+				if ($f_info['length'] <= 0) {
+					$skip = true;
+					break;
 				}
 			}
 			// Check for file overlap
@@ -271,8 +284,15 @@ class ISO9660 {
 						unset ($f_info['filesize']);
 					$f_info['length'] = $lba - $f_info['lba'];
 				}
+				// TODO: Check for LBA + Length overlap
+				if ($f_info['length'] <= 0) {
+					$skip = true;
+					break;
+				}
 			}
 		}
+		if ($skip)
+			$f_info = -1;
 		return ($f_info);
 	}
 	

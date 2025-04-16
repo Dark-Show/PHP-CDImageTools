@@ -294,19 +294,13 @@ class CDEMU {
 						$this->CD['cdemu']['sector'][$lba + $j]['address'] = $data[$j];
 					break;
 				case 'cdxa':
-					if (trim ($i[1]) == "1" and !is_file ($path . "CDXA" . trim ($i[1]) . ".bin")) {
+					if (trim ($i[1]) == "1") {
 						$data = file_get_contents ($path . "CDXA.bin");
 						for ($j = 0; $j < strlen ($data); $j += 5) {
 							if ($data[$j] == "\x01")
 								$this->CD['cdemu']['sector'][$j / 5]['xa'] = $this->parse_xa (substr ($data, $j + 1, 4));
 						}
-						break;
 					}
-					// DEPRECATED: Old CDXA format
-					$data = file_get_contents ($path . "CDXA" . trim ($i[1]) . ".bin");
-					$lba = (int)trim ($i[1]);
-					for ($j = 0; $j < strlen ($data); $j += 4)
-						$this->CD['cdemu']['sector'][$lba + ($j / 4)]['xa'] = $this->parse_xa (substr ($data, $j, 4));
 					break;
 				case 'cdedc':
 					$data = file_get_contents ($path . "CDEDC" . trim ($i[1]) . ".bin");
@@ -396,12 +390,13 @@ class CDEMU {
 				if (isset ($this->buffer[$i]))
 					continue;
 				$track = $this->get_track_by_sector ($i);
-				if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_CDEMU and isset ($this->CD['cdemu']['sector'][$i]['sector'])) {
-					$this->buffer[$i] = $this->read_bin_sector ($this->CD['cdemu']['sector'][$i]['sector']);
-					continue;
-				}
 				if (($sector_size = $this->file_seek ($i, $seq)) === false)
 					return ($fail);
+				if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_CDEMU and isset ($this->CD['cdemu']['sector'][$i]['sector'])) {
+					$this->buffer[$i] = $this->read_bin_sector ($this->CD['cdemu']['sector'][$i]['sector']);
+					fseek ($this->fh, ftell ($this->fh) + $sector_size); // Reposition file handler
+					continue;
+				}
 				$seq = true;
 				$data = fread ($this->fh, $sector_size); // Read sector
 				if ($this->CD['track'][$track]['file_format'] == CDEMU_FILE_CDEMU) {
@@ -423,7 +418,7 @@ class CDEMU {
 			$sector = &$this->buffer[$this->sector]; // Save sector
 			if ($this->sect_list_en)
 				$this->sect_list[$this->sector] = isset ($this->sect_list[$this->sector]) ? $this->sect_list[$this->sector] + 1 : 1; // Increment access list
-			$this->sector++; // Increment sector	
+			$this->sector++; // Increment sector
 			$this->track_detect(); // Detect track after sector change
 			return ($sector); // return sector
 		}
@@ -546,7 +541,6 @@ class CDEMU {
 			$data = substr ($data, 0, 2048); // Clip
 		else if (strlen ($data) < 2048)
 			$data = str_pad ($data, 2048, "\x00"); // Pad
-
 		$s = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00";
 		$s .= $this->lba2header ($lba);
 		$s .= chr ($mode === false ? 1 : $mode);
@@ -563,7 +557,6 @@ class CDEMU {
 			$data = substr ($data, 0, 2336); // Clip
 		else if (strlen ($data) < 2336)
 			$data = str_pad ($data, 2336, "\x00"); // Pad
-		
 		$s = "\x00\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00" . $this->lba2header ($lba) . chr ($mode === false ? 0 : $mode) . $data;
 		return ($s);
 	}
@@ -755,7 +748,9 @@ class CDEMU {
 					$r_info['analytics']['address'][$s_cur] = $sector['address']; // Address
 				if (isset ($sector['xa']))
 					$r_info['analytics']['xa'][$s_cur] = $sector['xa']['raw']; // XA
-				if (isset ($sector['error']) and (isset ($sector['edc']) or isset ($sector['ecc']))) {
+				if (!isset ($sector['error']) and isset ($sector['xa']) and $sector['xa']['submode']['form'] == 2) // Mode 2 Form 2 EDC
+					$r_info['analytics']['form2edc'] = true;
+				if (isset ($sector['error']) and isset ($sector['edc'])) { // EDC
 					if (isset ($sector['error']['edc']))
 						$r_info['analytics']['edc'][$s_cur] = $sector['edc']; // EDC
 					if (isset ($sector['xa']) and $sector['xa']['submode']['form'] == 2) {
@@ -765,9 +760,9 @@ class CDEMU {
 						else if (!isset ($r_info['analytics']['form2edc']))
 							$r_info['analytics']['form2edc'] = false;
 					}
-					if (isset ($sector['error']['ecc']))
-						$r_info['analytics']['ecc'][$s_cur] = $sector['ecc']; // ECC
 				}
+				if (isset ($sector['error']) and isset ($sector['error']['ecc']))
+					$r_info['analytics']['ecc'][$s_cur] = $sector['ecc']; // ECC
 			}
 			if ($hash_algos !== false) {
 				foreach ($r_info['full']['hash'] as $hash)

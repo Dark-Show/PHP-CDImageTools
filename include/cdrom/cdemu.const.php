@@ -23,8 +23,9 @@ const ISO9660_FILE_XA = 1; // XA-Interleaved or XA-Mode2
 const ISO9660_FILE_CDDA = 2; // Link to CDDA Track
 
 // ISO9660 Filesystem Map
-const ISO9660_MAP_VOLUME_DESCRIPTOR = 0; // Volume Descriptor
-const ISO9660_MAP_PATH_TABLE = 1; // Path Table
-const ISO9660_MAP_DIRECTORY_RECORD = 2; // Directory Record
+const ISO9660_MAP_SYSTEM_USE = 0; // System Use
+const ISO9660_MAP_VOLUME_DESCRIPTOR = 1; // Volume Descriptor
+const ISO9660_MAP_PATH_TABLE = 2; // Path Table
+const ISO9660_MAP_DIRECTORY_RECORD = 3; // Directory Record
 
 ?>
