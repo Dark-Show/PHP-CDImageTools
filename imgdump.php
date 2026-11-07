@@ -344,7 +344,7 @@ function dump_image ($cdemu, $dir_out, $full_dump, $full_name, $filename_trim, $
 				$file_out = $dir_out . "Track $t.cdda";
 			if ($cdemu->save_track ($file_out, false, false, 'cli_print_progress') === false)
 				return (false);
-			$info = $r_info['track'][$track];
+			$info = isset ($r_info['track'][$track]) ? $r_info['track'][$track] : array();
 			$info['file'] = $file_out;
 			$r_info['files'][] = $info;
 		} else { // Dump Data Track
@@ -543,6 +543,8 @@ function dump_filesystem ($cdemu, $iso9660, $dir_out, $file_prefix, $file_postfi
 	$out = '';
 	$k_last = array_key_last ($map) + 1;
 	for ($i = array_key_first ($map); $i <= $k_last; $i++) {
+		if (!isset ($p_out))
+			$p_out = $i;
 		if (!isset ($map[$i]) or ($d = (isset ($map[$i + 1]) and $map[$i + 1] != $map[$i]))) {
 			if ($d) {
 				$data = $cdemu->read ($i);
@@ -562,8 +564,6 @@ function dump_filesystem ($cdemu, $iso9660, $dir_out, $file_prefix, $file_postfi
 				unset ($p_out);
 			continue;
 		}
-		if (!isset ($p_out))
-			$p_out = $i;
 		$data = $cdemu->read ($i);
 		$out .= $data['data'];
 	}

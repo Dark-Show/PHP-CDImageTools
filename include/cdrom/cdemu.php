@@ -545,7 +545,7 @@ class CDEMU {
 		$s .= $this->lba2header ($lba);
 		$s .= chr ($mode === false ? 1 : $mode);
 		$s .= $data;
-		$s .= $edc === false ? $this->edc_compute ($s['sector'], 0, 2064) : $edc;
+		$s .= $edc === false ? $this->edc_compute ($s, 0, 2064) : $edc;
 		$s .= "\x00\x00\x00\x00\x00\x00\x00\x00";
 		$s .= $ecc === false ? $this->ecc_compute ($s, false) : $ecc;
 		return ($s);
@@ -931,6 +931,8 @@ class CDEMU {
 			}
 			if (($s = $this->read()) == false)
 				return (false);
+			if (!is_array ($s))
+				$s = ['sector' => $s];
 			fwrite ($fh, $s['sector']);
 			$info['length'] += strlen ($s['sector']);
 			if ($hash_algos !== false) {
