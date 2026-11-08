@@ -24,8 +24,16 @@ function cdrom_open_cue ($cue_file) {
 			$p1 = strpos ($line, '"') + 1;
 			$p2 = strpos ($line, '"', $p1) - $p1;
 			$file = substr ($line, $p1, $p2);
-			$type = explode (' ', trim ($line));
-			$type = $type[count ($type) - 1];
+			
+			$ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+			if ($ext === 'flac')
+    			$type = "FLAC";
+			else if ($ext === 'wav')
+    			$type = "WAVE";
+			else {
+				$type = explode (' ', trim ($line));
+				$type = $type[count ($type) - 1];
+			}
 			$sector_count = false;
 			if ($disk['path'] !== false and file_exists ($disk['path'] . $file))
 				$sector_count = filesize ($disk['path'] . $file) / CDROM_SECTOR;
@@ -53,6 +61,34 @@ function cdrom_open_cue ($cue_file) {
 			$t = explode (' ', trim ($line));
 			$nindex = (int)$t[1];
 			$index[$nindex] = $t[2];
+		} else if (strtolower (substr (trim ($line), 0, 9)) == "performer") {
+			$p1 = strpos ($line, '"') + 1;
+			$p2 = strpos ($line, '"', $p1) - $p1;
+			$performer = substr ($line, $p1, $p2);
+			if (isset ($ntrack))
+				$track['performer'] = $performer;
+			else
+				$disk['performer'] = $performer;
+		} else if (strtolower (substr (trim ($line), 0, 5)) == "title") {
+			$p1 = strpos ($line, '"') + 1;
+			$p2 = strpos ($line, '"', $p1) - $p1;
+			$title = substr ($line, $p1, $p2);
+			if (isset ($ntrack))
+				$track['title'] = $title;
+			else
+				$disk['title'] = $title;
+		} else if (strtolower (substr ($line, 0, 7)) == "catalog") {
+			$catalog = trim (substr ($line, 8));
+			$disk['catalog'] = $catalog;
+		} else if (strtolower (substr ($line, 0, 9)) == "rem genre") {
+			$genre = trim (substr ($line, 10));
+			$disk['genre'] = $genre;
+		} else if (strtolower (substr ($line, 0, 8)) == "rem date") {
+			$date = trim (substr ($line, 9));
+			$disk['date'] = $date;
+		} else if (strtolower (substr ($line, 0, 10)) == "rem discid") {
+			$discid = trim (substr ($line, 11));
+			$disk['discid'] = $discid;
 		}
 	}
 	if (isset ($index))
@@ -67,14 +103,30 @@ function cdrom_open_cue ($cue_file) {
 function cdrom_save_cue ($disk, $cue_file) {
 	$data = "";
 	$last_file = false;
+	if (isset ($disk['genre']))
+		$data .= "REM GENRE " . $disk['genre'] . "\r\n";
+	if (isset ($disk['date']))
+		$data .= "REM DATE " . $disk['date'] . "\r\n";
+	if (isset ($disk['discid']))
+		$data .= "REM DISCID " . $disk['discid'] . "\r\n";
+	if (isset ($disk['catalog']))
+		$data .= "CATALOG " . $disk['catalog'] . "\r\n";
+	if (isset ($disk['performer']))
+		$data .= "PERFORMER \"" . $disk['performer'] . "\"\r\n";
+	if (isset ($disk['title']))
+		$data .= "TITLE \"" . $disk['title'] . "\"\r\n";
 	foreach ($disk['track'] as $track => $info) {
 		if (!is_numeric ($track))
 			continue;
 		if ($last_file === false or $last_file != $info['file']) {
 			$last_file = $info['file'];
-			$data .= 'FILE "' . $info['file'] . '" ' . $info['file_type'] . "\r\n";
+			$data .= 'FILE "' . $info['file'] . '" ' . ($info['file_type'] == 'FLAC' ? 'WAVE' : $info['file_type']) . "\r\n";
 		}
 		$data .= CDROM_CUE_TAB . "TRACK " . ($track < 10 ? '0' : '') .  "$track " . $info['track_type'] . "\r\n";
+		if (isset ($info['performer']))
+			$data .= CDROM_CUE_TAB . CDROM_CUE_TAB . "PERFORMER \"" . $info['performer'] . "\"\r\n";
+		if (isset ($info['title']))
+			$data .= CDROM_CUE_TAB . CDROM_CUE_TAB . "TITLE \"" . $info['title'] . "\"\r\n";
 		if (isset ($info['pregap']))
 			$data .= CDROM_CUE_TAB . CDROM_CUE_TAB . "PREGAP " . $info['pregap'] . "\r\n";
 		foreach ($info['index'] as $index => $time)
@@ -89,56 +141,59 @@ function cdrom_save_cue ($disk, $cue_file) {
 function cdrom_concatenate_cue (&$disk, $basename, $output_dir) {
     $pos = '00:00:00';
 	$l_file = false;
+	$skip = false;
 	$o_fh = fopen ("$output_dir$basename.bin", "wb");
 	foreach ($disk['track'] as $track => $info) {
 		if (!is_numeric ($track))
 			continue;
 		if ($l_file == $info['file'])
-			continue;
-		$l_file = $info['file'];
+			$skip = true;
 		
-		$delete = false;
-		switch ($info['file_type']) {
-			case 'BINARY':
-				$i_fh = fopen ($disk['path'] . $info['file'], "rb");
-				break;
-			case 'WAVE':
-				if ($info['track_type'] != 'AUDIO')
+		if (!$skip) {
+			$l_file = $info['file'];
+			$delete = false;
+			switch ($info['file_type']) {
+				case 'BINARY':
+					$i_fh = fopen ($disk['path'] . $info['file'], "rb");
 					break;
-				ffmpeg_wav2pcm ($disk['path'] . $info['file'], "$output_dir$basename." . ($track < 10 ? '0' : '') . "$track.bin");
-				$disk['track'][$track]['file'] = "$basename." . ($track < 10 ? '0' : '') . "$track.bin";
-				$disk['track'][$track]['file_type'] = 'BINARY';
-				$disk['track'][$track]['file_sectors'] = filesize ($output_dir . $disk['track'][$track]['file']) / CDROM_SECTOR;
-				$delete = true;
-				$i_fh = fopen ($output_dir . $disk['track'][$track]['file'], "rb");
-				break;
-			case 'FLAC':
-				if ($info['track_type'] != 'AUDIO')
+				case 'WAVE':
+					if ($info['track_type'] != 'AUDIO')
+						break;
+					ffmpeg_wav2pcm ($disk['path'] . $info['file'], "$output_dir$basename." . ($track < 10 ? '0' : '') . "$track.bin");
+					$disk['track'][$track]['file'] = "$basename." . ($track < 10 ? '0' : '') . "$track.bin";
+					$disk['track'][$track]['file_type'] = 'BINARY';
+					$disk['track'][$track]['file_sectors'] = filesize ($output_dir . $disk['track'][$track]['file']) / CDROM_SECTOR;
+					$delete = true;
+					$i_fh = fopen ($output_dir . $disk['track'][$track]['file'], "rb");
 					break;
-				ffmpeg_flac2pcm ($disk['path'] . $info['file'], "$output_dir$basename." . ($track < 10 ? '0' : '') . "$track.bin");
-				$disk['track'][$track]['file'] = "$basename." . ($track < 10 ? '0' : '') . "$track.bin";
-				$disk['track'][$track]['file_type'] = 'BINARY';
-				$disk['track'][$track]['file_sectors'] = filesize ($output_dir . $disk['track'][$track]['file']) / CDROM_SECTOR;
-				$delete = true;
-				$i_fh = fopen ($output_dir . $disk['track'][$track]['file'], "rb");
-				break;
-			default:
-				return (false);
+				case 'FLAC':
+					if ($info['track_type'] != 'AUDIO')
+						break;
+					ffmpeg_flac2pcm ($disk['path'] . $info['file'], "$output_dir$basename." . ($track < 10 ? '0' : '') . "$track.bin");
+					$disk['track'][$track]['file'] = "$basename." . ($track < 10 ? '0' : '') . "$track.bin";
+					$disk['track'][$track]['file_type'] = 'BINARY';
+					$disk['track'][$track]['file_sectors'] = filesize ($output_dir . $disk['track'][$track]['file']) / CDROM_SECTOR;
+					$delete = true;
+					$i_fh = fopen ($output_dir . $disk['track'][$track]['file'], "rb");
+					break;
+				default:
+					return (false);
+			}
+		
+			while (!feof ($i_fh)) {
+				$data = fread ($i_fh, 4096);
+				fwrite ($o_fh, $data);
+			}
+			fclose ($i_fh);
+		
+			if ($delete)
+				unlink ($output_dir . $disk['track'][$track]['file']);
 		}
-		
-        while (!feof ($i_fh)) {
-            $data = fread ($i_fh, 4096);
-            fwrite ($o_fh, $data);
-        }
-        fclose ($i_fh);
-		
-		if ($delete)
-			unlink ($output_dir . $disk['track'][$track]['file']);
 		
 		$disk['track'][$track]['file'] = "$basename.bin";
 		$disk['track'][$track]['file_type'] = 'BINARY';
 		
-		if (isset ($disk['track'][$track - 1])) {
+		if (!$skip and isset ($disk['track'][$track - 1])) {
 			if ($info['file_sectors'] === false)
 				return (false);
 			if (isset ($info['index'][0])) {
@@ -160,6 +215,7 @@ function cdrom_concatenate_cue (&$disk, $basename, $output_dir) {
 function cdrom_split_cue (&$disk, $basename, $output_dir, $comp = CDROM_AUDIO_RAW) {
     $i_fh = false;
 	$i_file = false;
+	$large_flac = false;
 	foreach ($disk['track'] as $track => $info) {
 		if (!is_numeric ($track))
 			continue;
@@ -202,6 +258,24 @@ function cdrom_split_cue (&$disk, $basename, $output_dir, $comp = CDROM_AUDIO_RA
 					$disk['track'][$track]['file'] = "$file_out.bin";
 					break;
 				case 'FLAC':
+					// Detect large FLAC and process
+					$last_file = false;
+					foreach ($disk['track'] as $track => $info) {
+						if ($large_flac)
+							break;
+						if (!is_numeric ($track))
+							continue;
+						if ($last_file == $info['file']) {
+							echo ("Warning: Large FLAC detected, concatenating first. \n");
+							cdrom_concatenate_cue ($disk, $basename, $output_dir);
+							$c_disk = $disk; // Concatenated disk
+							cdrom_split_cue ($disk, $basename, $output_dir, $comp);
+							unlink ($c_disk['track'][1]['file']);
+							return (true);
+						}
+						$last_file = $info['file'];
+					}					
+					$large_flac = true;
 					ffmpeg_flac2pcm ($disk['path'] . $disk['track'][$track]['file'], "$output_dir$file_out.bin");
 					$disk['track'][$track]['file_type'] = "BINARY";
 					$disk['track'][$track]['file'] = "$file_out.bin";
@@ -226,13 +300,33 @@ function cdrom_split_cue (&$disk, $basename, $output_dir, $comp = CDROM_AUDIO_RA
 				$delete = false;
 				break;
 			case CDROM_AUDIO_WAVE:
-				ffmpeg_pcm2wav ($output_dir . $disk['track'][$track]['file'], "$output_dir$file_out.wav");
+				$cmd = "ffmpeg -y -f s16le -ar 44100 -ac 2 -i '" . $output_dir . $disk['track'][$track]['file'] . "' -c:a pcm_s16le " .
+					(isset ($disk['genre']) ? "-metadata genre='" . $disk['genre'] . "' " : "") .
+					(isset ($disk['date']) ? "-metadata date='" . $disk['date'] . "' " : "") .
+					(isset ($disk['title']) ? "-metadata album='" . $disk['title'] . "' " : "") .
+					(isset ($disk['track'][$track]['title']) ? "-metadata title='" . $disk['track'][$track]['title'] . "' " : "") .
+					(isset ($disk['track'][$track]['performer']) ? "-metadata artist='" . $disk['track'][$track]['performer'] . "' " : "") .
+					" '$output_dir$file_out.wav' > /dev/null 2>&1";
+    			passthru ($cmd);
 				$disk['track'][$track]['file'] = "$file_out.wav";
 				$disk['track'][$track]['file_type'] = "WAVE";
 				$delete = true;
 				break;
 			case CDROM_AUDIO_FLAC:
-				ffmpeg_pcm2flac ($output_dir . $disk['track'][$track]['file'], "$output_dir$file_out.flac");
+				$cmd = "ffmpeg -y -f s16le -ar 44100 -ac 2 -i '" . $output_dir . $disk['track'][$track]['file'] . "' -c:a flac " .
+					"-metadata TRACKNUMBER=\"$track\" " .
+					"-metadata TRACKTOTAL=\"" . count ($disk['track']) . "\" " .
+					"-metadata TOTALTRACKS=\"" . count ($disk['track']) . "\" " .
+					"-metadata track=\"" . $track . "/" . count ($disk['track']) . "\" " .
+					(isset ($disk['genre']) ? "-metadata genre='" . $disk['genre'] . "' " : "") .
+					(isset ($disk['date']) ? "-metadata DATE='" . $disk['date'] . "' " : "") .
+					(isset ($disk['catalog']) ? "-metadata CATALOGNUMBER='" . $disk['catalog'] . "' " : "") .
+					(isset ($disk['discid']) ? "-metadata discid='" . $disk['discid'] . "' " : "") .
+					(isset ($disk['title']) ? "-metadata album='" . $disk['title'] . "' " : "") .
+					(isset ($disk['track'][$track]['title']) ? "-metadata title='" . $disk['track'][$track]['title'] . "' " : "") .
+					(isset ($disk['track'][$track]['performer']) ? "-metadata artist='" . $disk['track'][$track]['performer'] . "' " : "") .
+					" '$output_dir$file_out.flac' > /dev/null 2>&1";
+				passthru ($cmd); // PCM2FLAC
 				$disk['track'][$track]['file'] = "$file_out.flac";
 				$disk['track'][$track]['file_type'] = "FLAC";
 				$delete = true;
@@ -243,7 +337,8 @@ function cdrom_split_cue (&$disk, $basename, $output_dir, $comp = CDROM_AUDIO_RA
 		if ($delete)
 			unlink ("$output_dir$file_out.bin");
 	}
-	fclose ($i_fh);
+	if (is_resource ($i_fh))
+		fclose ($i_fh);
 	return (true);
 }
 

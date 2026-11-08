@@ -20,11 +20,6 @@ function ffmpeg_flac2pcm ($flac, $pcm) {
     passthru ($cmd);
 }
 
-function ffmpeg_pcm2flac ($pcm, $flac, $channels = 2, $sample_rate = 44100) {
-    $cmd = "ffmpeg -y -f s16le -ar $sample_rate -ac $channels -i \"$pcm\" -c:a flac \"$flac\" > /dev/null 2>&1";
-    passthru ($cmd);
-}
-
 function ffmpeg_pcm2wav ($pcm, $wav, $channels = 2, $sample_rate = 44100) {
     $cmd = "ffmpeg -y -f s16le -ar $sample_rate -ac $channels -i \"$pcm\" -c:a copy \"$wav\" > /dev/null 2>&1";
     passthru ($cmd);

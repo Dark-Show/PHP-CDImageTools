@@ -56,7 +56,6 @@ function cli_process_argv ($argv) {
 			case '-audio':
 				if (!isset ($argv[$i + 1]))
 					die ("Error: Missing audio format\n");
-				$mode = CUEBIN_MODE_SPLIT;
 				$comp = $argv[$i + 1];
 				switch ($comp) {
 					case 'raw':
