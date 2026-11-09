@@ -552,6 +552,8 @@ class ISO9660 {
 		while (($pt = $this->path_table ($raw, $endian))['di_len'] > 0) {
 			$out = $pt;
 			$raw = substr ($raw, 8 + $pt['di_len'] + ($pt['di_len'] % 2 != 0 ? 1 : 0));
+			if (strlen ($raw) < 8)
+				break;
 		}
 		return ($out);
 	}

@@ -690,26 +690,27 @@ class CDEMU {
 	
 	private function &parse_xa ($data) {
 		$xa = array();
+		$p_xa = array (ord ($data[0]), ord ($data[1]), ord ($data[2]), ord ($data[3]));
 		$xa['raw'] = $data;
-		$xa['file_number'] = ord ($data[0]); // File Number
-		$xa['channel_number'] = ord ($data[1]); // Channel Number
-		$xa['submode']['eof'] = (ord ($data[2]) >> 7) & 0x01; // End of File
-		$xa['submode']['realtime'] = (ord ($data[2]) >> 6) & 0x01; // Real Time
-		$xa['submode']['form'] = ((ord ($data[2]) >> 5) & 0x01) + 1; // XA Data Form
-		$xa['submode']['trigger'] = (ord ($data[2]) >> 4) & 0x01; // Trigger Interrupt
-		$xa['submode']['data'] = (ord ($data[2]) >> 3) & 0x01; // Format Data
-		$xa['submode']['audio'] = (ord ($data[2]) >> 2) & 0x01; // Format Audio
-		$xa['submode']['video'] = (ord ($data[2]) >> 1) & 0x01; // Format Video
-		$xa['submode']['eor'] = (ord ($data[2]) >> 0) & 0x01; // End of Record
+		$xa['file_number'] = $p_xa[0]; // File Number
+		$xa['channel_number'] = $p_xa[1]; // Channel Number
+		$xa['submode']['eof'] = ($p_xa[2] >> 7) & 0x01; // End of File
+		$xa['submode']['realtime'] = ($p_xa[2] >> 6) & 0x01; // Real Time
+		$xa['submode']['form'] = (($p_xa[2] >> 5) & 0x01) + 1; // XA Data Form
+		$xa['submode']['trigger'] = ($p_xa[2] >> 4) & 0x01; // Trigger Interrupt
+		$xa['submode']['data'] = ($p_xa[2] >> 3) & 0x01; // Format Data
+		$xa['submode']['audio'] = ($p_xa[2] >> 2) & 0x01; // Format Audio
+		$xa['submode']['video'] = ($p_xa[2] >> 1) & 0x01; // Format Video
+		$xa['submode']['eor'] = ($p_xa[2] >> 0) & 0x01; // End of Record
 		if ($xa['submode']['audio']) { // Format Audio
-			$xa['codeinfo']['reserved'] = (ord ($data[3]) >> 7) & 0x01; // Reserved
-			$xa['codeinfo']['emphasis'] = (ord ($data[3]) >> 6) & 0x01; // Emphasis
-			$xa['codeinfo']['bps'] = (((ord ($data[3]) >> 4) & 0x07) + 1) * 4; // Bits Per Sample
-			$xa['codeinfo']['frequency'] = (ord ($data[3]) >> 2) & 0x07; // Frequency
+			$xa['codeinfo']['reserved'] = ($p_xa[3] >> 7) & 0x01; // Reserved
+			$xa['codeinfo']['emphasis'] = ($p_xa[3] >> 6) & 0x01; // Emphasis
+			$xa['codeinfo']['bps'] = ((($p_xa[3] >> 4) & 0x07) + 1) * 4; // Bits Per Sample
+			$xa['codeinfo']['frequency'] = ($p_xa[3] >> 2) & 0x07; // Frequency
 			$xa['codeinfo']['frequency'] = $xa['codeinfo']['frequency'] ? 18900 : 37800;
-			$xa['codeinfo']['channels'] = ((ord ($data[3]) >> 0) & 0x07) + 1; // Channel Layout
+			$xa['codeinfo']['channels'] = (($p_xa[3] >> 0) & 0x07) + 1; // Channel Layout
 		} else //if ($xa['submode']['video'] or $xa['submode']['data']) // Format Video / Data / Other
-			$xa['codeinfo'] = ord ($data[3]);
+			$xa['codeinfo'] = $p_xa[3];
 		return ($xa);
 	}
 	

@@ -624,9 +624,10 @@ function dump_data ($cdemu, $dir_out, $track, $full_dump, $trim_filename, $trim_
 				symlink ($target, $l_path . $l_name); // Create symlink to CDDA track
 				continue;
 			} else if ($f_info['type'] == ISO9660_FILE_XA) { // XA
-				if (!$full_dump)
-					$raw = true;
+				//if (!$full_dump)
+				//	$raw = true;
 				if ($xa_riff) {
+					$raw = true;
 					$h_riff_fmt_id = "CDXA";
 					$h_riff_fmt = $f_info['record']['extension']['xa']['data'] . "\x00\x00";
 					$iso9660->find_filesize ($f_info, 'cli_print_progress');
@@ -646,24 +647,12 @@ function dump_data ($cdemu, $dir_out, $track, $full_dump, $trim_filename, $trim_
 			if (isset ($info['error']) and isset ($info['error']['length']) and (!$full_dump or $info['error']['length'] > $info['length']))
 				echo ("      Warning: File may be corrupted, reported length " . $info['error']['length'] . "\n");
 		}
-		
-		// Dump any unaccessed sectors within the data track
-		$cdemu->set_track ($track);
-		$t_start = $cdemu->get_track_start (true);
-		$t_end = $t_start + $cdemu->get_track_length (true) - 1;
-		foreach ($cdemu->get_sector_unaccessed_list ($t_start, $t_end) as $sector => $length) {
-			if ($full_dump)
-				$r_info['index']['LBA'][] = str_pad ($sector, strlen ($cdemu->get_length (true)), '0', STR_PAD_LEFT);
-			$file_out = "LBA" . str_pad ($sector, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
-			echo ("    $file_out\n");
-			$info = $cdemu->save_sector ($dir_out . ($full_dump ? '' : $track_dir) . $file_out, $sector, $length, false, $hash_algos, 'cli_print_progress');
-			//$info['file'] = ($full_dump ? '' : $track_dir) . $file_out;
-			$r_info['files'][] = $info;
-			cli_print_info ($info);
-		}
-	} else { // Dump unrecognized data track
-		$sector = $cdemu->get_track_start (true);
-		$length = $cdemu->get_track_length (true);
+		$cdemu->set_track ($track); // Seek to beginning of track
+	}
+	// Dump unaccessed sectors in data track
+	$t_start = $cdemu->get_track_start (true);
+	$t_end = $t_start + $cdemu->get_track_length (true) - 1;
+	foreach ($cdemu->get_sector_unaccessed_list ($t_start, $t_end) as $sector => $length) {
 		if ($full_dump)
 			$r_info['index']['LBA'][] = str_pad ($sector, strlen ($cdemu->get_length (true)), '0', STR_PAD_LEFT);
 		$file_out = "LBA" . str_pad ($sector, strlen ($cdemu->get_length (true)), "0", STR_PAD_LEFT) . ".bin";
